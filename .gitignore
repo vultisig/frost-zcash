@@ -1,0 +1,14 @@
+target/
+*.swp
+*.swo
+.DS_Store
+
+# Build artifacts
+go-frost/includes/darwin/
+go-frost/includes/linux/
+go-frost/includes/linux-amd64/
+go-frost/includes/linux-arm64/
+frost-wasm/pkg/frost_wasm_bg.wasm
+frost-wasm/pkg/frost_wasm_bg.wasm.d.ts
+frost-wasm/pkg/frost_wasm.js
+frost-wasm/pkg/frost_wasm.d.ts

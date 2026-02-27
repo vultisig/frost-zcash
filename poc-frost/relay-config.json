@@ -1,0 +1,9 @@
+{
+  "port": 9090,
+  "redis_server": {
+    "addr": "redis:6379",
+    "user": "",
+    "password": "",
+    "db": 0
+  }
+}

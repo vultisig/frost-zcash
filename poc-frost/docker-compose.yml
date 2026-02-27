@@ -1,0 +1,92 @@
+services:
+  redis:
+    image: redis:alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  relay:
+    build:
+      context: ../..
+      dockerfile: frost-zcash/poc-frost/Dockerfile.relay
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9090/ping || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  party-1:
+    build:
+      context: ../..
+      dockerfile: frost-zcash/poc-frost/Dockerfile
+    environment:
+      - RELAY_URL=http://relay:9090
+      - PARTY_ID=party-1
+      - IDENTIFIER=1
+      - SESSION_ID=${SESSION_ID:-frost-keygen-001}
+      - PARTIES=party-1,party-2,party-3
+      - MAX_SIGNERS=3
+      - MIN_SIGNERS=2
+      - OPERATION=${OPERATION:-keygen}
+      - KEYSTORE_DIR=/data/keystore
+      - SIGN_MESSAGE=${SIGN_MESSAGE:-}
+      - SIGNERS=${SIGNERS:-}
+    volumes:
+      - party-1-data:/data/keystore
+    depends_on:
+      relay:
+        condition: service_healthy
+
+  party-2:
+    build:
+      context: ../..
+      dockerfile: frost-zcash/poc-frost/Dockerfile
+    environment:
+      - RELAY_URL=http://relay:9090
+      - PARTY_ID=party-2
+      - IDENTIFIER=2
+      - SESSION_ID=${SESSION_ID:-frost-keygen-001}
+      - PARTIES=party-1,party-2,party-3
+      - MAX_SIGNERS=3
+      - MIN_SIGNERS=2
+      - OPERATION=${OPERATION:-keygen}
+      - KEYSTORE_DIR=/data/keystore
+      - SIGN_MESSAGE=${SIGN_MESSAGE:-}
+      - SIGNERS=${SIGNERS:-}
+    volumes:
+      - party-2-data:/data/keystore
+    depends_on:
+      relay:
+        condition: service_healthy
+
+  party-3:
+    build:
+      context: ../..
+      dockerfile: frost-zcash/poc-frost/Dockerfile
+    environment:
+      - RELAY_URL=http://relay:9090
+      - PARTY_ID=party-3
+      - IDENTIFIER=3
+      - SESSION_ID=${SESSION_ID:-frost-keygen-001}
+      - PARTIES=party-1,party-2,party-3
+      - MAX_SIGNERS=3
+      - MIN_SIGNERS=2
+      - OPERATION=${OPERATION:-keygen}
+      - KEYSTORE_DIR=/data/keystore
+      - SIGN_MESSAGE=${SIGN_MESSAGE:-}
+      - SIGNERS=${SIGNERS:-}
+    volumes:
+      - party-3-data:/data/keystore
+    depends_on:
+      relay:
+        condition: service_healthy
+
+volumes:
+  party-1-data:
+  party-2-data:
+  party-3-data:
