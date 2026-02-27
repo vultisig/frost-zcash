@@ -15,6 +15,7 @@ const (
 	libDkgError          = 9
 	libSigningError      = 10
 	libReshareError      = 11
+	libKeyImportError    = 12
 )
 
 var libErrorMessages = map[int]string{
@@ -29,6 +30,7 @@ var libErrorMessages = map[int]string{
 	libDkgError:          "dkg error",
 	libSigningError:      "signing error",
 	libReshareError:      "reshare error",
+	libKeyImportError:    "key import error",
 }
 
 func mapLibError(code int) error {

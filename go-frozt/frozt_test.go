@@ -204,12 +204,6 @@ func TestFullFlow(t *testing.T) {
 	}
 	t.Logf("z-address: %s", zAddr)
 
-	tAddr, err := PubKeyToTAddress(pubKeyPackage)
-	if err != nil {
-		t.Fatalf("PubKeyToTAddress: %v", err)
-	}
-	t.Logf("t-address: %s", tAddr)
-
 	t.Log("=== All operations successful ===")
 }
 
@@ -330,6 +324,158 @@ func containsU16(slice []uint16, val uint16) bool {
 		}
 	}
 	return false
+}
+
+func runKeyImport(t *testing.T, n, threshold uint16, spendingKey, expectedVK []byte) (keyPackages [][]byte, pubKeyPackage []byte) {
+	t.Helper()
+
+	type party struct {
+		id     uint16
+		secret Handle
+		r1Pkg  []byte
+	}
+
+	parties := make([]party, n)
+	for i := uint16(0); i < n; i++ {
+		id := i + 1
+		var sk []byte
+		if id == 1 {
+			sk = spendingKey
+		}
+		secret, pkg, err := KeyImportPart1(id, n, threshold, sk)
+		if err != nil {
+			t.Fatalf("KeyImportPart1 party %d: %v", id, err)
+		}
+		parties[i] = party{id: id, secret: secret, r1Pkg: pkg}
+	}
+
+	type r2Result struct {
+		secret Handle
+		r2Pkgs []MapEntry
+	}
+	r2Results := make([]r2Result, n)
+
+	for i := uint16(0); i < n; i++ {
+		var others []MapEntry
+		for j := uint16(0); j < n; j++ {
+			if j == i {
+				continue
+			}
+			others = append(others, MapEntry{
+				ID:    mustEncodeID(t, parties[j].id),
+				Value: parties[j].r1Pkg,
+			})
+		}
+
+		secret, pkgsBytes, err := DkgPart2(parties[i].secret, EncodeMap(others))
+		if err != nil {
+			t.Fatalf("DkgPart2 party %d: %v", parties[i].id, err)
+		}
+
+		entries, decErr := DecodeMap(pkgsBytes)
+		if decErr != nil {
+			t.Fatalf("DecodeMap r2 party %d: %v", parties[i].id, decErr)
+		}
+		r2Results[i] = r2Result{secret: secret, r2Pkgs: entries}
+	}
+
+	keyPackages = make([][]byte, n)
+	myIDBytes := make([][]byte, n)
+	for i := uint16(0); i < n; i++ {
+		myIDBytes[i] = mustEncodeID(t, i+1)
+	}
+
+	for i := uint16(0); i < n; i++ {
+		var r1Others []MapEntry
+		for j := uint16(0); j < n; j++ {
+			if j == i {
+				continue
+			}
+			r1Others = append(r1Others, MapEntry{
+				ID:    mustEncodeID(t, parties[j].id),
+				Value: parties[j].r1Pkg,
+			})
+		}
+
+		var r2ForMe []MapEntry
+		for senderIdx := uint16(0); senderIdx < n; senderIdx++ {
+			if senderIdx == i {
+				continue
+			}
+			senderIDBytes := mustEncodeID(t, parties[senderIdx].id)
+			for _, entry := range r2Results[senderIdx].r2Pkgs {
+				if bytes.Equal(entry.ID, myIDBytes[i]) {
+					r2ForMe = append(r2ForMe, MapEntry{
+						ID:    senderIDBytes,
+						Value: entry.Value,
+					})
+				}
+			}
+		}
+
+		kp, pkp, err := KeyImportPart3(
+			r2Results[i].secret,
+			EncodeMap(r1Others),
+			EncodeMap(r2ForMe),
+			expectedVK,
+		)
+		if err != nil {
+			t.Fatalf("KeyImportPart3 party %d: %v", i+1, err)
+		}
+		keyPackages[i] = kp
+		if i == 0 {
+			pubKeyPackage = pkp
+		}
+	}
+
+	return keyPackages, pubKeyPackage
+}
+
+func TestKeyImport(t *testing.T) {
+	seed := make([]byte, 64)
+	for i := range seed {
+		seed[i] = 0xAB
+	}
+
+	t.Log("=== Derive spending key ===")
+	sk, err := DeriveSpendingKeyFromSeed(seed, 0)
+	if err != nil {
+		t.Fatalf("DeriveSpendingKeyFromSeed: %v", err)
+	}
+	t.Logf("spending key: %x (%d bytes)", sk, len(sk))
+
+	vk, err := SpendingKeyToVerifyingKey(sk)
+	if err != nil {
+		t.Fatalf("SpendingKeyToVerifyingKey: %v", err)
+	}
+	t.Logf("verifying key: %x (%d bytes)", vk, len(vk))
+
+	t.Log("=== Key Import 2-of-3 ===")
+	kps, pkp := runKeyImport(t, 3, 2, sk, vk)
+
+	importedVK, err := PubKeyPackageVerifyingKey(pkp)
+	if err != nil {
+		t.Fatalf("PubKeyPackageVerifyingKey: %v", err)
+	}
+	if !bytes.Equal(vk, importedVK) {
+		t.Fatal("verifying key mismatch after import")
+	}
+
+	t.Log("=== Sign (parties 0,1) ===")
+	msg := []byte("hello zcash key import")
+	runSign(t, kps, pkp, []int{0, 1}, msg)
+
+	t.Log("=== Sign (parties 1,2) ===")
+	runSign(t, kps, pkp, []int{1, 2}, msg)
+
+	t.Log("=== Derive z-address from seed ===")
+	zAddr, err := DeriveZAddressFromSeed(pkp, seed, 0)
+	if err != nil {
+		t.Fatalf("DeriveZAddressFromSeed: %v", err)
+	}
+	t.Logf("z-address: %s", zAddr)
+
+	t.Log("=== All key import operations successful ===")
 }
 
 func TestReshare(t *testing.T) {

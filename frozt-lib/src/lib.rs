@@ -4,6 +4,7 @@ pub mod handle;
 mod address;
 mod codec;
 mod errors;
+mod key_import;
 mod keygen;
 mod keyshare;
 mod reshare;

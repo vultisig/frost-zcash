@@ -180,15 +180,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "block-buffer"
-version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
-dependencies = [
- "generic-array",
-]
-
-[[package]]
 name = "bls12_381"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -199,16 +190,6 @@ dependencies = [
  "pairing",
  "rand_core",
  "subtle",
-]
-
-[[package]]
-name = "bs58"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
-dependencies = [
- "sha2",
- "tinyvec",
 ]
 
 [[package]]
@@ -432,16 +413,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "digest"
-version = "0.10.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
-dependencies = [
- "block-buffer",
- "crypto-common",
-]
-
-[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -544,26 +515,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "frozt-lib"
-version = "0.1.0"
-dependencies = [
- "bech32",
- "bs58",
- "cbindgen",
- "frost-core",
- "frost-rerandomized",
- "group",
- "hex",
- "lazy_static",
- "rand",
- "reddsa",
- "ripemd",
- "sapling-crypto",
- "sha2",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "frost-rerandomized"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -577,11 +528,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "frozt-lib"
+version = "0.1.0"
+dependencies = [
+ "bech32",
+ "cbindgen",
+ "frost-core",
+ "frost-rerandomized",
+ "group",
+ "hex",
+ "lazy_static",
+ "rand",
+ "reddsa",
+ "sapling-crypto",
+ "thiserror 1.0.69",
+ "zip32",
+]
+
+[[package]]
 name = "frozt-wasm"
 version = "0.1.0"
 dependencies = [
  "bech32",
- "bs58",
  "frost-core",
  "frost-rerandomized",
  "getrandom 0.2.17",
@@ -589,9 +557,7 @@ dependencies = [
  "js-sys",
  "rand",
  "reddsa",
- "ripemd",
  "sapling-crypto",
- "sha2",
  "wasm-bindgen",
 ]
 
@@ -1127,15 +1093,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ripemd"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
-dependencies = [
- "digest",
-]
-
-[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1271,17 +1228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha2"
-version = "0.10.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "digest",
-]
-
-[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1383,21 +1329,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "tinyvec"
-version = "1.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa5fdc3bce6191a1dbc8c02d5c8bffcf557bafa17c124c5264a458f1b0613fa"
-dependencies = [
- "tinyvec_macros",
-]
-
-[[package]]
-name = "tinyvec_macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "toml"

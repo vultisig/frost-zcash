@@ -41,6 +41,9 @@ pub enum lib_error {
 
     #[error("Reshare error")]
     LIB_RESHARE_ERROR,
+
+    #[error("Key import error")]
+    LIB_KEY_IMPORT_ERROR,
 }
 
 impl From<crate::handle::Error> for lib_error {

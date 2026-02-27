@@ -49,16 +49,10 @@ func (n *Node) runKeygen(ctx context.Context) error {
 		return fmt.Errorf("derive z-address: %w", err)
 	}
 
-	tAddr, err := frozt.PubKeyToTAddress(result.PubKeyPackage)
-	if err != nil {
-		return fmt.Errorf("derive t-address: %w", err)
-	}
-
 	log.Printf("[%s] Keygen complete!", n.Config.PartyID)
 	log.Printf("[%s]   Identifier: %d", n.Config.PartyID, id)
 	log.Printf("[%s]   Verifying key: %x", n.Config.PartyID, verifyingKey)
 	log.Printf("[%s]   Z-Address: %s", n.Config.PartyID, zAddr)
-	log.Printf("[%s]   T-Address: %s", n.Config.PartyID, tAddr)
 
 	err = n.Client.CompleteTSS(ctx, n.Config.SessionID, n.Config.Parties)
 	if err != nil {

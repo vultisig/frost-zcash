@@ -36,6 +36,7 @@ typedef enum {
     LIB_DKG_ERROR,
     LIB_SIGNING_ERROR,
     LIB_RESHARE_ERROR,
+    LIB_KEY_IMPORT_ERROR,
 } lib_error;
 
 /* Utility */
@@ -112,14 +113,35 @@ lib_error frozt_keypackage_identifier(const go_slice *key_package,
 lib_error frozt_pubkeypackage_verifying_key(const go_slice *pub_key_package,
                                             tss_buffer *out_key);
 
+/* Key Import */
+lib_error frozt_derive_spending_key_from_seed(const go_slice *seed,
+                                              uint32_t account_index,
+                                              tss_buffer *out_spending_key);
+
+lib_error frozt_spending_key_to_verifying_key(const go_slice *spending_key,
+                                              tss_buffer *out_verifying_key);
+
+lib_error frozt_key_import_part1(uint16_t identifier,
+                                 uint16_t max_signers,
+                                 uint16_t min_signers,
+                                 const go_slice *spending_key,
+                                 Handle *out_secret,
+                                 tss_buffer *out_package);
+
+lib_error frozt_key_import_part3(Handle secret,
+                                 const go_slice *round1_packages,
+                                 const go_slice *round2_packages,
+                                 const go_slice *expected_vk,
+                                 tss_buffer *out_key_package,
+                                 tss_buffer *out_pub_key_package);
+
+lib_error frozt_derive_z_address_from_seed(const go_slice *pub_key_package,
+                                           const go_slice *seed,
+                                           uint32_t account_index,
+                                           tss_buffer *out_address);
+
 /* Address derivation */
 lib_error frozt_derive_z_address(const go_slice *pub_key_package,
                                  tss_buffer *out_address);
-
-lib_error frozt_derive_t_address(const go_slice *pubkey_hash,
-                                 tss_buffer *out_address);
-
-lib_error frozt_pubkey_to_t_address(const go_slice *pub_key_package,
-                                    tss_buffer *out_address);
 
 #endif /* _FROZT_LIB_H */

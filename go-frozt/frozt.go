@@ -313,6 +313,113 @@ func PubKeyPackageVerifyingKey(pubKeyPackage []byte) ([]byte, error) {
 	return copyBuffer(&outKey), nil
 }
 
+// Key Import
+
+func DeriveSpendingKeyFromSeed(seed []byte, accountIndex uint32) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	s := cGoSlice(seed, pinner)
+
+	var outSK C.tss_buffer
+	defer C.tss_buffer_free(&outSK)
+
+	res := C.frozt_derive_spending_key_from_seed(s, C.uint32_t(accountIndex), &outSK)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outSK), nil
+}
+
+func SpendingKeyToVerifyingKey(spendingKey []byte) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	sk := cGoSlice(spendingKey, pinner)
+
+	var outVK C.tss_buffer
+	defer C.tss_buffer_free(&outVK)
+
+	res := C.frozt_spending_key_to_verifying_key(sk, &outVK)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outVK), nil
+}
+
+func KeyImportPart1(identifier, maxSigners, minSigners uint16, spendingKey []byte) (Handle, []byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	sk := cGoSlice(spendingKey, pinner)
+
+	var outSecret C.Handle
+	var outPackage C.tss_buffer
+	defer C.tss_buffer_free(&outPackage)
+
+	res := C.frozt_key_import_part1(
+		C.uint16_t(identifier),
+		C.uint16_t(maxSigners),
+		C.uint16_t(minSigners),
+		sk,
+		&outSecret,
+		&outPackage,
+	)
+	if res != 0 {
+		return 0, nil, mapLibError(int(res))
+	}
+
+	return Handle(outSecret._0), copyBuffer(&outPackage), nil
+}
+
+func KeyImportPart3(secret Handle, round1Packages, round2Packages, expectedVK []byte) ([]byte, []byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	r1 := cGoSlice(round1Packages, pinner)
+	r2 := cGoSlice(round2Packages, pinner)
+	vk := cGoSlice(expectedVK, pinner)
+
+	var outKP C.tss_buffer
+	var outPKP C.tss_buffer
+	defer C.tss_buffer_free(&outKP)
+	defer C.tss_buffer_free(&outPKP)
+
+	res := C.frozt_key_import_part3(
+		cHandle(secret),
+		r1,
+		r2,
+		vk,
+		&outKP,
+		&outPKP,
+	)
+	if res != 0 {
+		return nil, nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outKP), copyBuffer(&outPKP), nil
+}
+
+func DeriveZAddressFromSeed(pubKeyPackage, seed []byte, accountIndex uint32) (string, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	pkp := cGoSlice(pubKeyPackage, pinner)
+	s := cGoSlice(seed, pinner)
+
+	var outAddr C.tss_buffer
+	defer C.tss_buffer_free(&outAddr)
+
+	res := C.frozt_derive_z_address_from_seed(pkp, s, C.uint32_t(accountIndex), &outAddr)
+	if res != 0 {
+		return "", mapLibError(int(res))
+	}
+
+	return string(copyBuffer(&outAddr)), nil
+}
+
 // Address derivation
 
 func DeriveZAddress(pubKeyPackage []byte) (string, error) {
@@ -332,19 +439,3 @@ func DeriveZAddress(pubKeyPackage []byte) (string, error) {
 	return string(copyBuffer(&outAddr)), nil
 }
 
-func PubKeyToTAddress(pubKeyPackage []byte) (string, error) {
-	pinner := new(runtime.Pinner)
-	defer pinner.Unpin()
-
-	pkp := cGoSlice(pubKeyPackage, pinner)
-
-	var outAddr C.tss_buffer
-	defer C.tss_buffer_free(&outAddr)
-
-	res := C.frozt_pubkey_to_t_address(pkp, &outAddr)
-	if res != 0 {
-		return "", mapLibError(int(res))
-	}
-
-	return string(copyBuffer(&outAddr)), nil
-}

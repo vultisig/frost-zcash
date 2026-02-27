@@ -56,26 +56,6 @@ pub fn frozt_derive_z_address(pub_key_package: &[u8]) -> Result<String, JsError>
     encode_bech32("zs", &addr.to_bytes())
 }
 
-#[wasm_bindgen]
-pub fn frozt_pubkey_to_t_address(
-    pub_key_package: &[u8],
-) -> Result<String, JsError> {
-    let pkp =
-        PublicKeyPackage::<J>::deserialize(pub_key_package).map_err(to_js_err)?;
-    let vk_bytes = pkp.verifying_key().serialize().map_err(to_js_err)?;
-
-    use sha2::Digest;
-    let sha_hash = sha2::Sha256::digest(&vk_bytes);
-    let ripemd_hash = ripemd::Ripemd160::digest(&sha_hash);
-
-    let mut payload = Vec::with_capacity(22);
-    payload.push(0x1C);
-    payload.push(0xB8);
-    payload.extend_from_slice(&ripemd_hash);
-
-    Ok(bs58::encode(&payload).with_check().into_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,14 +72,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_derive_t_address() {
-        let results = run_dkg_native(3, 2);
-        let addr = frozt_pubkey_to_t_address(&results[0].1).unwrap();
-        assert!(
-            addr.starts_with("t1"),
-            "t-address should start with 't1': {}",
-            addr
-        );
-    }
 }
