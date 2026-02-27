@@ -1,6 +1,6 @@
-# frozt-zcash
+# frozt
 
-FROZT (Flexible Round-Optimized Schnorr Threshold) signatures for Zcash Sapling. Enables T-of-N threshold signing on the RedJubjub curve (`JubjubBlake2b512`) with rerandomization, so a group of N parties can collectively sign Zcash shielded transactions without any single party ever holding the full private key.
+FROZT (Flexible Round-Optimized Zcash-Schnorr Threshold) signatures for Zcash Sapling. Enables T-of-N threshold signing on the RedJubjub curve (`JubjubBlake2b512`) with rerandomization, so a group of N parties can collectively sign Zcash shielded transactions without any single party ever holding the full private key.
 
 ## Architecture
 
