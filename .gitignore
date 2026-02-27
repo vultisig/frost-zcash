@@ -4,11 +4,11 @@ target/
 .DS_Store
 
 # Build artifacts
-go-frost/includes/darwin/
-go-frost/includes/linux/
-go-frost/includes/linux-amd64/
-go-frost/includes/linux-arm64/
-frost-wasm/pkg/frost_wasm_bg.wasm
-frost-wasm/pkg/frost_wasm_bg.wasm.d.ts
-frost-wasm/pkg/frost_wasm.js
-frost-wasm/pkg/frost_wasm.d.ts
+go-frozt/includes/darwin/
+go-frozt/includes/linux/
+go-frozt/includes/linux-amd64/
+go-frozt/includes/linux-arm64/
+frozt-wasm/pkg/frozt_wasm_bg.wasm
+frozt-wasm/pkg/frozt_wasm_bg.wasm.d.ts
+frozt-wasm/pkg/frozt_wasm.js
+frozt-wasm/pkg/frozt_wasm.d.ts

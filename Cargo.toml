@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["frost-lib", "frost-wasm"]
+members = ["frozt-lib", "frozt-wasm"]
 
 [patch.crates-io]
 reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552" }

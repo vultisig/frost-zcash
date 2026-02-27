@@ -1,33 +1,33 @@
 .PHONY: build-rust build-go test-rust test-go test docker-keygen docker-sign clean
 
 build-rust:
-	cargo build --release -p frost-lib
+	cargo build --release -p frozt-lib
 
 build-go: build-rust
-	mkdir -p go-frost/includes/darwin go-frost/includes/linux
+	mkdir -p go-frozt/includes/darwin go-frozt/includes/linux
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		cp target/release/libfrostlib.dylib go-frost/includes/darwin/; \
+		cp target/release/libfroztlib.dylib go-frozt/includes/darwin/; \
 	else \
-		cp target/release/libfrostlib.so go-frost/includes/linux/; \
+		cp target/release/libfroztlib.so go-frozt/includes/linux/; \
 	fi
-	cp frost-lib/include/frost-lib.h go-frost/includes/
-	cd go-frost && go build ./...
+	cp frozt-lib/include/frozt-lib.h go-frozt/includes/
+	cd go-frozt && go build ./...
 
 test-rust:
-	cargo test -p frost-lib
+	cargo test -p frozt-lib
 
 test-go: build-go
-	cd go-frost && go test -v ./...
+	cd go-frozt && go test -v ./...
 
 test: test-rust test-go
 
 docker-keygen:
-	cd poc-frost && ./scripts/run-keygen.sh $(SESSION)
+	cd poc-frozt && ./scripts/run-keygen.sh $(SESSION)
 
 docker-sign:
-	cd poc-frost && ./scripts/run-sign.sh $(SESSION) "$(MESSAGE)" "$(SIGNERS)"
+	cd poc-frozt && ./scripts/run-sign.sh $(SESSION) "$(MESSAGE)" "$(SIGNERS)"
 
 clean:
 	cargo clean
-	rm -f go-frost/includes/darwin/libfrostlib.dylib
-	rm -f go-frost/includes/linux/libfrostlib.so
+	rm -f go-frozt/includes/darwin/libfroztlib.dylib
+	rm -f go-frozt/includes/linux/libfroztlib.so

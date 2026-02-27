@@ -2,23 +2,23 @@ FROM rust:1.83-bookworm AS rust-builder
 
 WORKDIR /build
 COPY Cargo.toml rust-toolchain.toml ./
-COPY frost-lib/ frost-lib/
-COPY frost-wasm/ frost-wasm/
+COPY frozt-lib/ frozt-lib/
+COPY frozt-wasm/ frozt-wasm/
 
-RUN cargo test -p frost-lib
-RUN cargo build --release -p frost-lib
+RUN cargo test -p frozt-lib
+RUN cargo build --release -p frozt-lib
 
 FROM golang:1.22-bookworm
 
-COPY --from=rust-builder /build/target/release/libfrostlib.so /usr/lib/
+COPY --from=rust-builder /build/target/release/libfroztlib.so /usr/lib/
 RUN ldconfig
 
 WORKDIR /build
-COPY go-frost/ go-frost/
+COPY go-frozt/ go-frozt/
 
-COPY --from=rust-builder /build/frost-lib/include/frost-lib.h go-frost/includes/
-RUN mkdir -p go-frost/includes/linux && \
-    cp /usr/lib/libfrostlib.so go-frost/includes/linux/
+COPY --from=rust-builder /build/frozt-lib/include/frozt-lib.h go-frozt/includes/
+RUN mkdir -p go-frozt/includes/linux && \
+    cp /usr/lib/libfroztlib.so go-frozt/includes/linux/
 
-WORKDIR /build/go-frost
+WORKDIR /build/go-frozt
 RUN CGO_ENABLED=1 go test -v -count=1 ./...

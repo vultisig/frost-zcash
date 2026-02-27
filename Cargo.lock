@@ -544,7 +544,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "frost-lib"
+name = "frozt-lib"
 version = "0.1.0"
 dependencies = [
  "bech32",
@@ -577,7 +577,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "frost-wasm"
+name = "frozt-wasm"
 version = "0.1.0"
 dependencies = [
  "bech32",
