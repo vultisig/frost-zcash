@@ -19,7 +19,7 @@ The cryptographic core. Implements three FROZT protocols over the `reddsa` crate
 - **Signing** — 4-phase rerandomized threshold signing (`frozt_sign_commit`, `frozt_sign_new_package`, `frozt_sign`, `frozt_sign_aggregate`). Any T signers produce a valid RedJubjub signature. Rerandomization is required for Zcash Sapling's unlinkability guarantees.
 - **Resharing** — Change the threshold scheme (e.g., 2-of-2 to 2-of-3) without changing the group verifying key (`frozt_reshare_part1`, reuses `frozt_dkg_part2`, `frozt_reshare_part3`).
 - **Key Import** — Import an existing Zcash Sapling spending key into the threshold scheme (`frozt_derive_spending_key_from_seed`, `frozt_spending_key_to_verifying_key`, `frozt_key_import_part1`, reuses `frozt_dkg_part2`, `frozt_key_import_part3`). The importing party provides their spending key; all other parties participate with zero-knowledge. The result is verified against the expected verifying key.
-- **Address derivation** — Derive Zcash shielded z-addresses (Sapling, bech32 `zs...`) from the group public key (`frozt_derive_z_address`), or from the original seed for imported keys (`frozt_derive_z_address_from_seed`).
+- **Sapling** — Generate and manage Sapling extras (96 bytes: `nsk || ovk || dk`) needed for z-address derivation. For seedless DKG, extras are generated randomly (`frozt_sapling_generate_extras`). For key import, extras are derived from the original seed (`frozt_derive_sapling_extras_from_seed`). Z-addresses are derived by combining the group public key with sapling extras (`frozt_sapling_derive_address`).
 
 Exposes all functions as `extern "C"` with a C header (`frozt-lib.h`). Intermediate secret state is held in a global handle table to avoid serializing sensitive material across the FFI boundary.
 
@@ -27,7 +27,7 @@ Exposes all functions as `extern "C"` with a C header (`frozt-lib.h`). Intermedi
 
 Go package wrapping every C function with idiomatic Go APIs via CGo. Includes:
 
-- **`frozt.go`** — Direct 1:1 wrappers for DKG, signing, resharing, key import, identifier encoding, key inspection, and address derivation.
+- **`frozt.go`** — Direct 1:1 wrappers for DKG, signing, resharing, key import, sapling extras, identifier encoding, key inspection, and address derivation.
 - **`codec.go`** — Go implementation of the binary map serialization format (length-prefixed `{id, value}` entries).
 - **`orchestration/`** — Multi-party coordination layer for running FROZT protocols across separate processes over a Vultisig relay server:
   - `relay_client.go` — HTTP client for session management, message passing, and barrier synchronization.
@@ -128,7 +128,7 @@ Import an existing Zcash Sapling spending key (derived from a BIP39 mnemonic via
 3. **Round 2**: Reuses `frozt_dkg_part2` unchanged.
 4. **Round 3**: `frozt_key_import_part3` runs standard DKG part 3, then verifies the resulting group verifying key matches the expected key derived from the spending key.
 
-For z-address derivation with imported keys, use `frozt_derive_z_address_from_seed` which re-derives the full `ExtendedSpendingKey` from the original seed to obtain the correct `nsk`, `ovk`, and diversifier key needed for a valid Sapling payment address.
+Sapling extras (`nsk`, `ovk`, `dk`) needed for z-address derivation are extracted from the seed via `frozt_derive_sapling_extras_from_seed`. For seedless DKG, use `frozt_sapling_generate_extras` to produce random extras. In both cases, `frozt_sapling_derive_address` combines the group public key with the extras to produce a valid Sapling z-address.
 
 ### Signing
 

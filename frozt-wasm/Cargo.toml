@@ -14,3 +14,9 @@ frost-rerandomized = "2.2"
 reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552", features = ["frost"] }
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
+sapling-crypto = "0.6"
+jubjub = "0.10"
+ff = "0.13"
+group = "0.13"
+bech32 = "0.11"
+zip32 = "0.2"

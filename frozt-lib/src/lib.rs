@@ -5,6 +5,7 @@ mod codec;
 mod errors;
 mod key_import;
 mod keygen;
+mod sapling;
 mod keyshare;
 mod reshare;
 mod sign;

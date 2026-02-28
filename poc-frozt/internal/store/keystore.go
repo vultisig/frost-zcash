@@ -30,6 +30,14 @@ func (k *Keystore) LoadPubKeyPackage(sessionID string) ([]byte, error) {
 	return k.readFile(sessionID, "pub_key_package.bin")
 }
 
+func (k *Keystore) SaveSaplingExtras(sessionID string, data []byte) error {
+	return k.writeFile(sessionID, "sapling_extras.bin", data)
+}
+
+func (k *Keystore) LoadSaplingExtras(sessionID string) ([]byte, error) {
+	return k.readFile(sessionID, "sapling_extras.bin")
+}
+
 func (k *Keystore) HasKeys(sessionID string) bool {
 	kpPath := filepath.Join(k.Dir, sessionID, "key_package.bin")
 	_, err := os.Stat(kpPath)

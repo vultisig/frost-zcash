@@ -37,6 +37,7 @@ typedef enum {
     LIB_SIGNING_ERROR,
     LIB_RESHARE_ERROR,
     LIB_KEY_IMPORT_ERROR,
+    LIB_SAPLING_ERROR,
 } lib_error;
 
 /* Utility */
@@ -136,9 +137,15 @@ lib_error frozt_key_import_part3(Handle secret,
                                  tss_buffer *out_key_package,
                                  tss_buffer *out_pub_key_package);
 
-lib_error frozt_derive_z_address_from_seed(const go_slice *pub_key_package,
-                                           const go_slice *seed,
-                                           uint32_t account_index,
-                                           tss_buffer *out_address);
+/* Sapling */
+lib_error frozt_sapling_generate_extras(tss_buffer *out_sapling_extras);
+
+lib_error frozt_sapling_derive_address(const go_slice *pub_key_package,
+                                       const go_slice *sapling_extras,
+                                       tss_buffer *out_address);
+
+lib_error frozt_derive_sapling_extras_from_seed(const go_slice *seed,
+                                                uint32_t account_index,
+                                                tss_buffer *out_sapling_extras);
 
 #endif /* _FROZT_LIB_H */

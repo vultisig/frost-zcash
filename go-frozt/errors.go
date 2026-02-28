@@ -16,6 +16,7 @@ const (
 	libSigningError      = 10
 	libReshareError      = 11
 	libKeyImportError    = 12
+	libSaplingError      = 13
 )
 
 var libErrorMessages = map[int]string{
@@ -31,6 +32,7 @@ var libErrorMessages = map[int]string{
 	libSigningError:      "signing error",
 	libReshareError:      "reshare error",
 	libKeyImportError:    "key import error",
+	libSaplingError:      "sapling error",
 }
 
 func mapLibError(code int) error {

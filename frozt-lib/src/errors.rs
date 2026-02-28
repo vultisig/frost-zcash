@@ -44,6 +44,9 @@ pub enum lib_error {
 
     #[error("Key import error")]
     LIB_KEY_IMPORT_ERROR,
+
+    #[error("Sapling error")]
+    LIB_SAPLING_ERROR,
 }
 
 impl From<crate::handle::Error> for lib_error {

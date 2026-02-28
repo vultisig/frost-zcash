@@ -410,17 +410,31 @@ func KeyImportPart3(secret Handle, round1Packages, round2Packages, expectedVK []
 	return copyBuffer(&outKP), copyBuffer(&outPKP), nil
 }
 
-func DeriveZAddressFromSeed(pubKeyPackage, seed []byte, accountIndex uint32) (string, error) {
+// Sapling
+
+func SaplingGenerateExtras() ([]byte, error) {
+	var outExtras C.tss_buffer
+	defer C.tss_buffer_free(&outExtras)
+
+	res := C.frozt_sapling_generate_extras(&outExtras)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outExtras), nil
+}
+
+func SaplingDeriveAddress(pubKeyPackage, saplingExtras []byte) (string, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
 	pkp := cGoSlice(pubKeyPackage, pinner)
-	s := cGoSlice(seed, pinner)
+	extras := cGoSlice(saplingExtras, pinner)
 
 	var outAddr C.tss_buffer
 	defer C.tss_buffer_free(&outAddr)
 
-	res := C.frozt_derive_z_address_from_seed(pkp, s, C.uint32_t(accountIndex), &outAddr)
+	res := C.frozt_sapling_derive_address(pkp, extras, &outAddr)
 	if res != 0 {
 		return "", mapLibError(int(res))
 	}
@@ -428,4 +442,19 @@ func DeriveZAddressFromSeed(pubKeyPackage, seed []byte, accountIndex uint32) (st
 	return string(copyBuffer(&outAddr)), nil
 }
 
+func DeriveSaplingExtrasFromSeed(seed []byte, accountIndex uint32) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
 
+	s := cGoSlice(seed, pinner)
+
+	var outExtras C.tss_buffer
+	defer C.tss_buffer_free(&outExtras)
+
+	res := C.frozt_derive_sapling_extras_from_seed(s, C.uint32_t(accountIndex), &outExtras)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outExtras), nil
+}

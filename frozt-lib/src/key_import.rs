@@ -189,63 +189,14 @@ pub extern "C" fn frozt_key_import_part3(
     })
 }
 
-#[no_mangle]
-pub extern "C" fn frozt_derive_z_address_from_seed(
-    pub_key_package: Option<&go_slice>,
-    seed: Option<&go_slice>,
-    account_index: u32,
-    out_address: Option<&mut tss_buffer>,
-) -> lib_error {
-    with_error_handler(|| {
-        let pkp_data = pub_key_package.ok_or(lib_error::LIB_NULL_PTR)?;
-        let seed_data = seed.ok_or(lib_error::LIB_NULL_PTR)?;
-        let out = out_address.ok_or(lib_error::LIB_NULL_PTR)?;
-
-        if seed_data.len() != 64 {
-            return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
-        }
-
-        let pkp = frost_core::keys::PublicKeyPackage::<J>::deserialize(pkp_data.as_slice())
-            .map_err(ser_err)?;
-        let group_vk = pkp.verifying_key().serialize().map_err(ser_err)?;
-
-        let master = ExtendedSpendingKey::master(seed_data.as_slice());
-        let path = [
-            ChildIndex::hardened(32),
-            ChildIndex::hardened(133),
-            ChildIndex::hardened(account_index),
-        ];
-        let child = ExtendedSpendingKey::from_path(&master, &path);
-
-        let ask_bytes = child.expsk.ask.to_bytes();
-        let sk_arr: &[u8; 32] = &ask_bytes;
-        let expected_scalar = F::deserialize(sk_arr).map_err(ser_err)?;
-        let expected_ak = G::serialize(&(G::generator() * expected_scalar))
-            .map_err(ser_err)?;
-        if expected_ak.as_ref() as &[u8] != group_vk.as_slice() {
-            return Err(lib_error::LIB_KEY_IMPORT_ERROR);
-        }
-
-        let (_, addr) = child.default_address();
-
-        let hrp = bech32::Hrp::parse("zs")
-            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
-        let encoded = bech32::encode::<bech32::Bech32>(hrp, &addr.to_bytes())
-            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
-
-        *out = tss_buffer::from_vec(encoded.into_bytes());
-        Ok(())
-    })
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::keygen;
     use crate::keygen::tests::{decode_test_map, encode_test_map};
     use crate::sign::tests::run_sign;
 
-    fn run_key_import(
+    pub fn run_key_import(
         n: u16,
         t: u16,
         spending_key: &[u8],
@@ -410,133 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn test_derivation_chain_integrity() {
-        use group::GroupEncoding;
-        use sapling_crypto::{
-            constants::PROOF_GENERATION_KEY_GENERATOR,
-            keys::{FullViewingKey, NullifierDerivingKey},
-            zip32::sapling_default_address,
-        };
-
-        let seed = hex::decode(
-            "c829196323d2eea891b2b6a01e0f10f31645a339e0b1ab0c1f3184d6ac58589a\
-             2fdab5c19437877ba33887541a27436eb287393dea0265a3681da5e6f5853627"
-        ).unwrap();
-
-        let master = ExtendedSpendingKey::master(&seed);
-        let path = [
-            ChildIndex::hardened(32),
-            ChildIndex::hardened(133),
-            ChildIndex::hardened(0),
-        ];
-        let child = ExtendedSpendingKey::from_path(&master, &path);
-
-        let ask_bytes = child.expsk.ask.to_bytes();
-
-        let ask_scalar = F::deserialize(&ask_bytes).unwrap();
-        let frost_ak = G::generator() * ask_scalar;
-        let frost_ak_bytes = G::serialize(&frost_ak).unwrap();
-
-        let fvk = FullViewingKey::from_expanded_spending_key(&child.expsk);
-        let sapling_ak_bytes = fvk.vk.ak.to_bytes();
-
-        assert_eq!(
-            frost_ak_bytes.as_ref(),
-            &sapling_ak_bytes[..],
-            "FROST generator * ask must equal sapling SpendValidatingKey"
-        );
-
-        let nk = NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * child.expsk.nsk);
-        let _nk_bytes = nk.0.to_bytes();
-
-        let _ivk = fvk.vk.ivk();
-
-        let (_, dk) = {
-            let xsk_bytes = child.to_bytes();
-            let dk_slice = &xsk_bytes[137..169];
-            ((), sapling_crypto::zip32::DiversifierKey::from_bytes(dk_slice.try_into().unwrap()))
-        };
-
-        let (_, addr) = sapling_default_address(&fvk, &dk);
-
-        let z_addr = bech32::encode::<bech32::Bech32>(
-            bech32::Hrp::parse("zs").unwrap(),
-            &addr.to_bytes(),
-        ).unwrap();
-
-        assert_eq!(
-            z_addr,
-            "zs1s82p0h0689ccjdfe39tvlzj6hyp2ukqrukfdvdd8cgqfgnexc958uzt0nshx2vk2l9xmxzun7vq"
-        );
-
-        let results = run_key_import(3, 2, &ask_bytes, frost_ak_bytes.as_ref());
-        let pkp = frost_core::keys::PublicKeyPackage::<J>::deserialize(&results[0].1).unwrap();
-        let frost_group_vk = pkp.verifying_key().serialize().unwrap();
-
-        assert_eq!(
-            frost_group_vk.as_slice(),
-            &sapling_ak_bytes[..],
-            "FROST group VK must match sapling ak"
-        );
-        assert_eq!(
-            frost_group_vk.as_slice(),
-            frost_ak_bytes.as_ref(),
-            "FROST group VK must match FROST generator * ask"
-        );
-
-        run_sign(&results, &[0, 1]);
-        run_sign(&results, &[1, 2]);
-    }
-
-    #[test]
-    fn test_blind_mnemonic_verification() {
-        use sapling_crypto::keys::FullViewingKey;
-        use sapling_crypto::zip32::sapling_default_address;
-
-        // "divorce ride face oxygen tank fossil trim aunt exact beauty evoke entry"
-        let seed = hex::decode(
-            "23068a91016aea698ecaed597ef3c9faffcd849f500f9bb9462eae0fa5229685\
-             316ce51f7da4dc90dc98cfadb3e4756ace08e85cfe5d0d25c0acdf96e30363b9"
-        ).unwrap();
-
-        let master = ExtendedSpendingKey::master(&seed);
-        let path = [
-            ChildIndex::hardened(32),
-            ChildIndex::hardened(133),
-            ChildIndex::hardened(0),
-        ];
-        let child = ExtendedSpendingKey::from_path(&master, &path);
-
-        let ask_bytes = child.expsk.ask.to_bytes();
-        let ask_scalar = F::deserialize(&ask_bytes).unwrap();
-        let frost_ak = G::generator() * ask_scalar;
-        let frost_ak_bytes = G::serialize(&frost_ak).unwrap();
-
-        let fvk = FullViewingKey::from_expanded_spending_key(&child.expsk);
-        let sapling_ak_bytes = fvk.vk.ak.to_bytes();
-        assert_eq!(frost_ak_bytes.as_ref(), &sapling_ak_bytes[..]);
-
-        let xsk_bytes = child.to_bytes();
-        let dk = sapling_crypto::zip32::DiversifierKey::from_bytes(
-            xsk_bytes[137..169].try_into().unwrap(),
-        );
-        let (_, addr) = sapling_default_address(&fvk, &dk);
-
-        let _z_addr = bech32::encode::<bech32::Bech32>(
-            bech32::Hrp::parse("zs").unwrap(),
-            &addr.to_bytes(),
-        ).unwrap();
-
-        let results = run_key_import(3, 2, &ask_bytes, frost_ak_bytes.as_ref());
-        run_sign(&results, &[0, 1]);
-        run_sign(&results, &[1, 2]);
-    }
-
-    #[test]
     fn test_key_import_mnemonic_seed() {
-        // BIP39 seed for: "pull army pride tribe debris trim evoke inmate lift sure
-        // parent deny school trumpet owner ensure picture spare foil object junior
-        // favorite potato enforce" (empty passphrase)
         let seed = hex::decode(
             "c829196323d2eea891b2b6a01e0f10f31645a339e0b1ab0c1f3184d6ac58589a\
              2fdab5c19437877ba33887541a27436eb287393dea0265a3681da5e6f5853627"
@@ -570,18 +395,25 @@ mod tests {
         let group_vk = pkp.verifying_key().serialize().unwrap();
         assert_eq!(group_vk, vk);
 
-        let master = ExtendedSpendingKey::master(&seed);
-        let path = [
-            ChildIndex::hardened(32),
-            ChildIndex::hardened(133),
-            ChildIndex::hardened(0),
-        ];
-        let child = ExtendedSpendingKey::from_path(&master, &path);
-        let (_, addr) = child.default_address();
-        let z_addr = bech32::encode::<bech32::Bech32>(
-            bech32::Hrp::parse("zs").unwrap(),
-            &addr.to_bytes(),
-        ).unwrap();
+        let mut extras_buf = tss_buffer::empty();
+        assert_eq!(
+            crate::sapling::frozt_derive_sapling_extras_from_seed(
+                Some(&seed_slice), 0, Some(&mut extras_buf),
+            ),
+            lib_error::LIB_OK,
+        );
+        let extras = extras_buf.into_vec();
+
+        let pkp_slice = go_slice::from(results[0].1.as_slice());
+        let extras_slice = go_slice::from(extras.as_slice());
+        let mut addr_buf = tss_buffer::empty();
+        assert_eq!(
+            crate::sapling::frozt_sapling_derive_address(
+                Some(&pkp_slice), Some(&extras_slice), Some(&mut addr_buf),
+            ),
+            lib_error::LIB_OK,
+        );
+        let z_addr = String::from_utf8(addr_buf.into_vec()).unwrap();
         let expected_z_addr = "zs1s82p0h0689ccjdfe39tvlzj6hyp2ukqrukfdvdd8cgqfgnexc958uzt0nshx2vk2l9xmxzun7vq";
         assert_eq!(z_addr, expected_z_addr, "z-address should match wallet");
     }

@@ -18,6 +18,7 @@ const (
 type KeygenResult struct {
 	KeyPackage    []byte
 	PubKeyPackage []byte
+	SaplingExtras []byte // 96 bytes: nsk(32) || ovk(32) || dk(32)
 }
 
 type RoundMessage struct {
@@ -103,10 +104,61 @@ func RunKeygen(ctx context.Context, client *RelayClient, sessionID, partyID stri
 		return nil, fmt.Errorf("dkg part3: %w", err)
 	}
 
+	saplingExtras, err := exchangeSaplingExtras(ctx, client, sessionID, partyID, identifier, allParties)
+	if err != nil {
+		return nil, fmt.Errorf("sapling extras: %w", err)
+	}
+
 	return &KeygenResult{
 		KeyPackage:    keyPackage,
 		PubKeyPackage: pubKeyPackage,
+		SaplingExtras: saplingExtras,
 	}, nil
+}
+
+func exchangeSaplingExtras(ctx context.Context, client *RelayClient, sessionID, partyID string, identifier uint16, allParties []string) ([]byte, error) {
+	isCoordinator := identifier == 1
+
+	if isCoordinator {
+		extras, err := frozt.SaplingGenerateExtras()
+		if err != nil {
+			return nil, fmt.Errorf("generate sapling extras: %w", err)
+		}
+
+		msg := RoundMessage{
+			SenderID: identifier,
+			Data:     base64.StdEncoding.EncodeToString(extras),
+		}
+		msgBytes, err := json.Marshal(msg)
+		if err != nil {
+			return nil, fmt.Errorf("marshal sapling extras: %w", err)
+		}
+
+		recipients := otherParties(allParties, partyID)
+		err = client.SendMessage(ctx, sessionID, "sapling-extras", Message{
+			SessionID: sessionID,
+			From:      partyID,
+			To:        recipients,
+			Body:      string(msgBytes),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("send sapling extras: %w", err)
+		}
+
+		return extras, nil
+	}
+
+	messages, err := collectMessages(ctx, client, sessionID, partyID, "sapling-extras", 1)
+	if err != nil {
+		return nil, fmt.Errorf("collect sapling extras: %w", err)
+	}
+
+	extras, err := base64.StdEncoding.DecodeString(messages[0].Data)
+	if err != nil {
+		return nil, fmt.Errorf("decode sapling extras: %w", err)
+	}
+
+	return extras, nil
 }
 
 func collectMessages(ctx context.Context, client *RelayClient, sessionID, partyID, messageID string, expected int) ([]RoundMessage, error) {

@@ -461,10 +461,19 @@ func TestKeyImport(t *testing.T) {
 	t.Log("=== Sign (parties 1,2) ===")
 	runSign(t, kps, pkp, []int{1, 2}, msg)
 
-	t.Log("=== Derive z-address from seed ===")
-	zAddr, err := DeriveZAddressFromSeed(pkp, seed, 0)
+	t.Log("=== Derive sapling extras from seed ===")
+	extras, err := DeriveSaplingExtrasFromSeed(seed, 0)
 	if err != nil {
-		t.Fatalf("DeriveZAddressFromSeed: %v", err)
+		t.Fatalf("DeriveSaplingExtrasFromSeed: %v", err)
+	}
+	if len(extras) != 96 {
+		t.Fatalf("expected 96 bytes sapling extras, got %d", len(extras))
+	}
+
+	t.Log("=== Derive z-address from extras ===")
+	zAddr, err := SaplingDeriveAddress(pkp, extras)
+	if err != nil {
+		t.Fatalf("SaplingDeriveAddress: %v", err)
 	}
 	t.Logf("z-address: %s", zAddr)
 
@@ -518,4 +527,30 @@ func TestReshare(t *testing.T) {
 	runSign(t, kps4, pkp4, []int{1, 2, 3}, msg)
 
 	t.Log("=== All reshare operations successful ===")
+}
+
+func TestSaplingExtras(t *testing.T) {
+	t.Log("=== DKG 2-of-3 ===")
+	_, pubKeyPackage := runDKG(t, 3, 2)
+
+	t.Log("=== Generate sapling extras ===")
+	extras, err := SaplingGenerateExtras()
+	if err != nil {
+		t.Fatalf("SaplingGenerateExtras: %v", err)
+	}
+	if len(extras) != 96 {
+		t.Fatalf("expected 96 bytes, got %d", len(extras))
+	}
+
+	t.Log("=== Derive address from extras ===")
+	addr, err := SaplingDeriveAddress(pubKeyPackage, extras)
+	if err != nil {
+		t.Fatalf("SaplingDeriveAddress: %v", err)
+	}
+	if len(addr) < 3 || addr[:2] != "zs" {
+		t.Fatalf("expected zs... address, got: %s", addr)
+	}
+	t.Logf("z-address: %s", addr)
+
+	t.Log("=== All sapling extras operations successful ===")
 }

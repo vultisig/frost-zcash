@@ -3,6 +3,7 @@ mod key_import;
 mod keygen;
 mod keyshare;
 mod reshare;
+mod sapling;
 mod sign;
 
 use reddsa::frost::redjubjub::JubjubBlake2b512;

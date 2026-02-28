@@ -394,6 +394,7 @@ dependencies = [
  "frost-rerandomized",
  "group",
  "hex",
+ "jubjub",
  "lazy_static",
  "rand",
  "reddsa",
@@ -406,13 +407,19 @@ dependencies = [
 name = "frozt-wasm"
 version = "0.1.0"
 dependencies = [
+ "bech32",
+ "ff",
  "frost-core",
  "frost-rerandomized",
  "getrandom",
+ "group",
  "js-sys",
+ "jubjub",
  "rand",
  "reddsa",
+ "sapling-crypto",
  "wasm-bindgen",
+ "zip32",
 ]
 
 [[package]]
