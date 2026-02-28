@@ -53,6 +53,7 @@ impl From<crate::handle::Error> for lib_error {
             crate::handle::Error::NotFound => lib_error::LIB_INVALID_HANDLE,
             crate::handle::Error::InUse => lib_error::LIB_HANDLE_IN_USE,
             crate::handle::Error::InvalidType => lib_error::LIB_INVALID_HANDLE_TYPE,
+            crate::handle::Error::TableFull => lib_error::LIB_UNKNOWN_ERROR,
         }
     }
 }

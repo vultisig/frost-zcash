@@ -30,6 +30,8 @@ impl Deref for go_slice {
 }
 
 impl go_slice {
+    /// SAFETY: Caller must ensure ptr is valid for len bytes and pinned
+    /// for the lifetime of any slice returned by as_slice().
     pub fn as_slice(&self) -> &[u8] {
         if self.is_empty() {
             return &[];
@@ -50,13 +52,11 @@ impl tss_buffer {
         }
     }
 
-    pub fn from_vec(mut vec: Vec<u8>) -> Self {
-        vec.shrink_to_fit();
-        let vec = vec.leak();
-        tss_buffer {
-            ptr: vec.as_ptr() as _,
-            len: vec.len(),
-        }
+    pub fn from_vec(vec: Vec<u8>) -> Self {
+        let boxed: Box<[u8]> = vec.into_boxed_slice();
+        let len = boxed.len();
+        let ptr = Box::into_raw(boxed) as *const u8;
+        tss_buffer { ptr, len }
     }
 
     pub fn as_slice(&self) -> &[u8] {
@@ -67,14 +67,17 @@ impl tss_buffer {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.ptr.is_null()
+        self.ptr.is_null() || self.len == 0
     }
 
     pub fn into_vec(self) -> Vec<u8> {
         if self.is_empty() {
             return vec![];
         }
-        unsafe { Vec::from_raw_parts(self.ptr as _, self.len, self.len) }
+        unsafe {
+            let slice = std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.len);
+            Box::from_raw(slice as *mut [u8]).into_vec()
+        }
     }
 }
 
@@ -114,8 +117,10 @@ pub fn tss_buffer_free(buf: Option<&mut tss_buffer>) {
     if let Some(buf) = buf {
         if !buf.is_empty() {
             let ptr = std::mem::replace(&mut buf.ptr, std::ptr::null());
+            let len = std::mem::replace(&mut buf.len, 0);
             unsafe {
-                let _ = Vec::from_raw_parts(ptr as *mut u8, buf.len, buf.len);
+                let slice = std::slice::from_raw_parts_mut(ptr as *mut u8, len);
+                let _ = Box::from_raw(slice as *mut [u8]);
             }
         }
     }

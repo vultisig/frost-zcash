@@ -13,18 +13,11 @@ use crate::{
 type J = JubjubBlake2b512;
 type Identifier = frost_core::Identifier<J>;
 
-fn ser_err<E: std::fmt::Debug>(_: E) -> lib_error {
+fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
+    #[cfg(debug_assertions)]
+    eprintln!("frozt serialization error: {:?}", e);
+    let _ = e;
     lib_error::LIB_SERIALIZATION_ERROR
-}
-
-pub(crate) fn encode_r1_map(
-    map: &BTreeMap<Identifier, dkg::round1::Package<J>>,
-) -> Result<Vec<u8>, lib_error> {
-    codec::encode_map(
-        map,
-        |id| Ok(id.serialize()),
-        |pkg| pkg.serialize().map_err(ser_err),
-    )
 }
 
 pub(crate) fn decode_r1_map(
@@ -69,6 +62,10 @@ pub extern "C" fn frozt_dkg_part1(
         let out_secret = out_secret.ok_or(lib_error::LIB_NULL_PTR)?;
         let out_package = out_package.ok_or(lib_error::LIB_NULL_PTR)?;
 
+        if min_signers < 2 || max_signers < min_signers {
+            return Err(lib_error::LIB_DKG_ERROR);
+        }
+
         let id = Identifier::try_from(identifier)
             .map_err(|_| lib_error::LIB_INVALID_IDENTIFIER)?;
 
@@ -78,7 +75,7 @@ pub extern "C" fn frozt_dkg_part1(
 
         let pkg_bytes = package.serialize().map_err(ser_err)?;
 
-        *out_secret = Handle::allocate(secret);
+        *out_secret = Handle::allocate(secret)?;
         *out_package = tss_buffer::from_vec(pkg_bytes);
 
         Ok(())
@@ -105,7 +102,7 @@ pub extern "C" fn frozt_dkg_part2(
 
         let r2_bytes = encode_r2_map(&r2_pkgs)?;
 
-        *out_secret = Handle::allocate(secret2);
+        *out_secret = Handle::allocate(secret2)?;
         *out_packages = tss_buffer::from_vec(r2_bytes);
 
         Ok(())

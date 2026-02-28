@@ -62,7 +62,10 @@ func RunKeygen(ctx context.Context, client *RelayClient, sessionID, partyID stri
 		return nil, fmt.Errorf("collect round1: %w", err)
 	}
 
-	round1Map := buildRoundMap(round1Messages)
+	round1Map, err := buildRoundMap(round1Messages)
+	if err != nil {
+		return nil, fmt.Errorf("build round1 map: %w", err)
+	}
 	round1Encoded := frozt.EncodeMap(round1Map)
 
 	secret2, round2Pkgs, err := frozt.DkgPart2(secret1, round1Encoded)
@@ -89,7 +92,10 @@ func RunKeygen(ctx context.Context, client *RelayClient, sessionID, partyID stri
 		return nil, fmt.Errorf("collect round2: %w", err)
 	}
 
-	round2RecvMap := buildRoundMap(round2Messages)
+	round2RecvMap, err := buildRoundMap(round2Messages)
+	if err != nil {
+		return nil, fmt.Errorf("build round2 map: %w", err)
+	}
 	round2Encoded := frozt.EncodeMap(round2RecvMap)
 
 	keyPackage, pubKeyPackage, err := frozt.DkgPart3(secret2, round1Encoded, round2Encoded)
@@ -139,23 +145,23 @@ func collectMessages(ctx context.Context, client *RelayClient, sessionID, partyI
 	return collected, nil
 }
 
-func buildRoundMap(messages []RoundMessage) []frozt.MapEntry {
+func buildRoundMap(messages []RoundMessage) ([]frozt.MapEntry, error) {
 	entries := make([]frozt.MapEntry, 0, len(messages))
 	for _, m := range messages {
 		idBytes, err := frozt.EncodeIdentifier(m.SenderID)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("encode identifier %d: %w", m.SenderID, err)
 		}
 		data, err := base64.StdEncoding.DecodeString(m.Data)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("decode base64 from sender %d: %w", m.SenderID, err)
 		}
 		entries = append(entries, frozt.MapEntry{
 			ID:    idBytes,
 			Value: data,
 		})
 	}
-	return entries
+	return entries, nil
 }
 
 func sendPerRecipient(ctx context.Context, client *RelayClient, sessionID, partyID, messageID string, senderIdentifier uint16, mapEntries []frozt.MapEntry, allParties []string) error {

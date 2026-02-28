@@ -1,5 +1,5 @@
-mod address;
 mod codec;
+mod key_import;
 mod keygen;
 mod keyshare;
 mod reshare;

@@ -11,12 +11,15 @@ use std::{
 
 use lazy_static::lazy_static;
 
+const MAX_HANDLES: usize = 4096;
+
 #[derive(Debug)]
 pub enum Error {
     NullHandle,
     NotFound,
     InUse,
     InvalidType,
+    TableFull,
 }
 
 lazy_static! {
@@ -74,9 +77,12 @@ impl Handle {
         Handle(0)
     }
 
-    pub fn allocate<T: Send + 'static>(obj: T) -> Handle {
+    pub fn allocate<T: Send + 'static>(obj: T) -> Result<Handle, Error> {
         let obj: Box<dyn Any + Send> = Box::new(obj);
         let mut map = HMAP.lock().unwrap();
+        if map.len() >= MAX_HANDLES {
+            return Err(Error::TableFull);
+        }
         let handle = loop {
             let last = LAST.fetch_add(2, Ordering::Relaxed);
             if !map.contains_key(&last) {
@@ -84,7 +90,7 @@ impl Handle {
             }
         };
         map.insert(handle, Some(obj));
-        Handle(handle)
+        Ok(Handle(handle))
     }
 
     pub fn get<T: Send + 'static>(&self) -> Result<HandleGuard<T>, Error> {

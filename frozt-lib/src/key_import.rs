@@ -18,7 +18,10 @@ type Identifier = frost_core::Identifier<J>;
 type F = <<J as Ciphersuite>::Group as Group>::Field;
 type G = <J as Ciphersuite>::Group;
 
-fn ser_err<E: std::fmt::Debug>(_: E) -> lib_error {
+fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
+    #[cfg(debug_assertions)]
+    eprintln!("frozt serialization error: {:?}", e);
+    let _ = e;
     lib_error::LIB_SERIALIZATION_ERROR
 }
 
@@ -87,6 +90,10 @@ pub extern "C" fn frozt_key_import_part1(
         let out_secret = out_secret.ok_or(lib_error::LIB_NULL_PTR)?;
         let out_package = out_package.ok_or(lib_error::LIB_NULL_PTR)?;
 
+        if min_signers < 2 || max_signers < min_signers {
+            return Err(lib_error::LIB_KEY_IMPORT_ERROR);
+        }
+
         let id = Identifier::try_from(identifier)
             .map_err(|_| lib_error::LIB_INVALID_IDENTIFIER)?;
 
@@ -136,7 +143,7 @@ pub extern "C" fn frozt_key_import_part1(
         let package = dkg::round1::Package::new(commitment, proof);
         let pkg_bytes = package.serialize().map_err(ser_err)?;
 
-        *out_secret = Handle::allocate(secret);
+        *out_secret = Handle::allocate(secret)?;
         *out_package = tss_buffer::from_vec(pkg_bytes);
 
         Ok(())
@@ -425,16 +432,13 @@ mod tests {
         let child = ExtendedSpendingKey::from_path(&master, &path);
 
         let ask_bytes = child.expsk.ask.to_bytes();
-        eprintln!("1. ask (from ZIP 32): {}", hex::encode(&ask_bytes));
 
         let ask_scalar = F::deserialize(&ask_bytes).unwrap();
         let frost_ak = G::generator() * ask_scalar;
         let frost_ak_bytes = G::serialize(&frost_ak).unwrap();
-        eprintln!("2. ak via FROST generator * ask: {}", hex::encode(frost_ak_bytes));
 
         let fvk = FullViewingKey::from_expanded_spending_key(&child.expsk);
         let sapling_ak_bytes = fvk.vk.ak.to_bytes();
-        eprintln!("3. ak via sapling SpendValidatingKey: {}", hex::encode(&sapling_ak_bytes));
 
         assert_eq!(
             frost_ak_bytes.as_ref(),
@@ -443,32 +447,22 @@ mod tests {
         );
 
         let nk = NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * child.expsk.nsk);
-        let nk_bytes = nk.0.to_bytes();
-        eprintln!("4. nk (from nsk): {}", hex::encode(&nk_bytes));
+        let _nk_bytes = nk.0.to_bytes();
 
         let _ivk = fvk.vk.ivk();
-        eprintln!("5. ivk: (derived from ak + nk via crh_ivk)");
 
         let (_, dk) = {
             let xsk_bytes = child.to_bytes();
             let dk_slice = &xsk_bytes[137..169];
-            eprintln!("6. dk (diversifier key): {}", hex::encode(dk_slice));
             ((), sapling_crypto::zip32::DiversifierKey::from_bytes(dk_slice.try_into().unwrap()))
         };
 
-        let (div_idx, addr) = sapling_default_address(&fvk, &dk);
-        eprintln!("7. diversifier index: {}", u64::from_le_bytes({
-            let mut b = [0u8; 8];
-            b.copy_from_slice(&div_idx.as_bytes()[..8]);
-            b
-        }));
-        eprintln!("8. payment address: {}", hex::encode(addr.to_bytes()));
+        let (_, addr) = sapling_default_address(&fvk, &dk);
 
         let z_addr = bech32::encode::<bech32::Bech32>(
             bech32::Hrp::parse("zs").unwrap(),
             &addr.to_bytes(),
         ).unwrap();
-        eprintln!("9. z-address: {}", z_addr);
 
         assert_eq!(
             z_addr,
@@ -478,7 +472,6 @@ mod tests {
         let results = run_key_import(3, 2, &ask_bytes, frost_ak_bytes.as_ref());
         let pkp = frost_core::keys::PublicKeyPackage::<J>::deserialize(&results[0].1).unwrap();
         let frost_group_vk = pkp.verifying_key().serialize().unwrap();
-        eprintln!("10. FROST group VK (from threshold DKG): {}", hex::encode(&frost_group_vk));
 
         assert_eq!(
             frost_group_vk.as_slice(),
@@ -493,12 +486,10 @@ mod tests {
 
         run_sign(&results, &[0, 1]);
         run_sign(&results, &[1, 2]);
-        eprintln!("11. signing with threshold shares: OK");
     }
 
     #[test]
     fn test_blind_mnemonic_verification() {
-        use group::GroupEncoding;
         use sapling_crypto::keys::FullViewingKey;
         use sapling_crypto::zip32::sapling_default_address;
 
@@ -531,12 +522,10 @@ mod tests {
         );
         let (_, addr) = sapling_default_address(&fvk, &dk);
 
-        let z_addr = bech32::encode::<bech32::Bech32>(
+        let _z_addr = bech32::encode::<bech32::Bech32>(
             bech32::Hrp::parse("zs").unwrap(),
             &addr.to_bytes(),
         ).unwrap();
-
-        eprintln!("z-address: {}", z_addr);
 
         let results = run_key_import(3, 2, &ask_bytes, frost_ak_bytes.as_ref());
         run_sign(&results, &[0, 1]);
@@ -561,7 +550,6 @@ mod tests {
             lib_error::LIB_OK,
         );
         let sk = sk_buf.into_vec();
-        eprintln!("ask (spending key): {}", hex::encode(&sk));
 
         let sk_slice = go_slice::from(sk.as_slice());
         let mut vk_buf = tss_buffer::empty();
@@ -570,7 +558,6 @@ mod tests {
             lib_error::LIB_OK,
         );
         let vk = vk_buf.into_vec();
-        eprintln!("ak (verifying key): {}", hex::encode(&vk));
 
         let results = run_key_import(3, 2, &sk, &vk);
         assert_eq!(results.len(), 3);
@@ -582,7 +569,6 @@ mod tests {
         let pkp = frost_core::keys::PublicKeyPackage::<J>::deserialize(&results[0].1).unwrap();
         let group_vk = pkp.verifying_key().serialize().unwrap();
         assert_eq!(group_vk, vk);
-        eprintln!("group VK matches expected: {}", hex::encode(&group_vk));
 
         let master = ExtendedSpendingKey::master(&seed);
         let path = [
@@ -596,8 +582,6 @@ mod tests {
             bech32::Hrp::parse("zs").unwrap(),
             &addr.to_bytes(),
         ).unwrap();
-        eprintln!("z-address (from xsk): {}", z_addr);
-
         let expected_z_addr = "zs1s82p0h0689ccjdfe39tvlzj6hyp2ukqrukfdvdd8cgqfgnexc958uzt0nshx2vk2l9xmxzun7vq";
         assert_eq!(z_addr, expected_z_addr, "z-address should match wallet");
     }

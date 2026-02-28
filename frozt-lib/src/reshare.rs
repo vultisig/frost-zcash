@@ -17,7 +17,10 @@ type Scalar = frost_core::Scalar<J>;
 type F = <<J as Ciphersuite>::Group as Group>::Field;
 type G = <J as Ciphersuite>::Group;
 
-fn ser_err<E: std::fmt::Debug>(_: E) -> lib_error {
+fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
+    #[cfg(debug_assertions)]
+    eprintln!("frozt serialization error: {:?}", e);
+    let _ = e;
     lib_error::LIB_SERIALIZATION_ERROR
 }
 
@@ -65,6 +68,10 @@ pub extern "C" fn frozt_reshare_part1(
     with_error_handler(|| {
         let out_secret = out_secret.ok_or(lib_error::LIB_NULL_PTR)?;
         let out_package = out_package.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        if min_signers < 2 || max_signers < min_signers {
+            return Err(lib_error::LIB_RESHARE_ERROR);
+        }
 
         let id = Identifier::try_from(identifier)
             .map_err(|_| lib_error::LIB_INVALID_IDENTIFIER)?;
@@ -125,7 +132,7 @@ pub extern "C" fn frozt_reshare_part1(
         let package = dkg::round1::Package::new(commitment, proof);
         let pkg_bytes = package.serialize().map_err(ser_err)?;
 
-        *out_secret = Handle::allocate(secret);
+        *out_secret = Handle::allocate(secret)?;
         *out_package = tss_buffer::from_vec(pkg_bytes);
 
         Ok(())

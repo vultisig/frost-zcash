@@ -73,7 +73,10 @@ func RunSign(ctx context.Context, client *RelayClient, sessionID, partyID string
 		Commitment: base64.StdEncoding.EncodeToString(commitmentBytes),
 	})
 
-	commitmentsMap := buildCommitmentsMap(allCommitments)
+	commitmentsMap, err := buildCommitmentsMap(allCommitments)
+	if err != nil {
+		return nil, fmt.Errorf("build commitments map: %w", err)
+	}
 	commitmentsEncoded := frozt.EncodeMap(commitmentsMap)
 
 	if isCoordinator {
@@ -309,26 +312,29 @@ func waitForMessage(ctx context.Context, client *RelayClient, sessionID, partyID
 	}
 }
 
-func buildCommitmentsMap(commitments []CommitmentMessage) []frozt.MapEntry {
+func buildCommitmentsMap(commitments []CommitmentMessage) ([]frozt.MapEntry, error) {
 	entries := make([]frozt.MapEntry, 0, len(commitments))
 	for _, c := range commitments {
 		idBytes, err := frozt.EncodeIdentifier(c.SenderID)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("encode identifier %d: %w", c.SenderID, err)
 		}
 		data, err := base64.StdEncoding.DecodeString(c.Commitment)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("decode commitment from sender %d: %w", c.SenderID, err)
 		}
 		entries = append(entries, frozt.MapEntry{ID: idBytes, Value: data})
 	}
-	return entries
+	return entries, nil
 }
 
 func isCoordinatorParty(partyID string, parties []string) bool {
 	return partyID == getCoordinatorPartyID(parties)
 }
 
+// getCoordinatorPartyID picks the lexicographically smallest party ID as
+// coordinator. This is deterministic but predictable — consider rotating
+// or randomizing in adversarial settings.
 func getCoordinatorPartyID(parties []string) string {
 	sorted := make([]string, len(parties))
 	copy(sorted, parties)

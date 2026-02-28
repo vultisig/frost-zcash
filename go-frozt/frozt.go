@@ -32,6 +32,14 @@ func copyBuffer(buf *C.tss_buffer) []byte {
 	return C.GoBytes(unsafe.Pointer(buf.ptr), C.int(buf.len))
 }
 
+func HandleFree(h Handle) error {
+	res := C.frozt_handle_free(cHandle(h))
+	if res != 0 {
+		return mapLibError(int(res))
+	}
+	return nil
+}
+
 // DKG
 
 func DkgPart1(identifier, maxSigners, minSigners uint16) (Handle, []byte, error) {
@@ -420,22 +428,4 @@ func DeriveZAddressFromSeed(pubKeyPackage, seed []byte, accountIndex uint32) (st
 	return string(copyBuffer(&outAddr)), nil
 }
 
-// Address derivation
-
-func DeriveZAddress(pubKeyPackage []byte) (string, error) {
-	pinner := new(runtime.Pinner)
-	defer pinner.Unpin()
-
-	pkp := cGoSlice(pubKeyPackage, pinner)
-
-	var outAddr C.tss_buffer
-	defer C.tss_buffer_free(&outAddr)
-
-	res := C.frozt_derive_z_address(pkp, &outAddr)
-	if res != 0 {
-		return "", mapLibError(int(res))
-	}
-
-	return string(copyBuffer(&outAddr)), nil
-}
 

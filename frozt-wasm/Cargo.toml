@@ -12,8 +12,5 @@ js-sys = "0.3"
 frost-core = { version = "2.2", features = ["internals", "serialization"] }
 frost-rerandomized = "2.2"
 reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552", features = ["frost"] }
-sapling-crypto = { version = "0.6", default-features = false }
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
-group = "0.13"
-bech32 = "0.11"

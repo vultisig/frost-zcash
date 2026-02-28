@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -45,7 +46,7 @@ func (c *RelayClient) WaitForBarrier(ctx context.Context, sessionID, phase, part
 }
 
 func (c *RelayClient) GetBarrier(ctx context.Context, sessionID, phase string, count int) (*BarrierResponse, error) {
-	reqURL := fmt.Sprintf("%s/barrier/%s?phase=%s&count=%d", c.BaseURL, sessionID, phase, count)
+	reqURL := fmt.Sprintf("%s/barrier/%s?phase=%s&count=%d", c.BaseURL, url.PathEscape(sessionID), url.QueryEscape(phase), count)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {

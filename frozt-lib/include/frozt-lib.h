@@ -41,6 +41,7 @@ typedef enum {
 
 /* Utility */
 void tss_buffer_free(tss_buffer *buf);
+lib_error frozt_handle_free(Handle h);
 
 /* DKG Keygen */
 lib_error frozt_dkg_part1(uint16_t identifier,
@@ -139,9 +140,5 @@ lib_error frozt_derive_z_address_from_seed(const go_slice *pub_key_package,
                                            const go_slice *seed,
                                            uint32_t account_index,
                                            tss_buffer *out_address);
-
-/* Address derivation */
-lib_error frozt_derive_z_address(const go_slice *pub_key_package,
-                                 tss_buffer *out_address);
 
 #endif /* _FROZT_LIB_H */

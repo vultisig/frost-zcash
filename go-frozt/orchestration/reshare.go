@@ -59,7 +59,10 @@ func RunReshare(
 		return nil, fmt.Errorf("collect round1: %w", err)
 	}
 
-	round1Map := buildRoundMap(round1Messages)
+	round1Map, err := buildRoundMap(round1Messages)
+	if err != nil {
+		return nil, fmt.Errorf("build round1 map: %w", err)
+	}
 	round1Encoded := frozt.EncodeMap(round1Map)
 
 	secret2, round2Pkgs, err := frozt.DkgPart2(secret1, round1Encoded)
@@ -86,7 +89,10 @@ func RunReshare(
 		return nil, fmt.Errorf("collect round2: %w", err)
 	}
 
-	round2RecvMap := buildRoundMap(round2Messages)
+	round2RecvMap, err := buildRoundMap(round2Messages)
+	if err != nil {
+		return nil, fmt.Errorf("build round2 map: %w", err)
+	}
 	round2Encoded := frozt.EncodeMap(round2RecvMap)
 
 	keyPackage, pubKeyPackage, err := frozt.ResharePart3(secret2, round1Encoded, round2Encoded, expectedVerifyingKey)

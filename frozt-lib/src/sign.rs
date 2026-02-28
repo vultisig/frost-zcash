@@ -20,7 +20,10 @@ use crate::{
 type J = JubjubBlake2b512;
 type Identifier = frost_core::Identifier<J>;
 
-fn ser_err<E: std::fmt::Debug>(_: E) -> lib_error {
+fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
+    #[cfg(debug_assertions)]
+    eprintln!("frozt serialization error: {:?}", e);
+    let _ = e;
     lib_error::LIB_SERIALIZATION_ERROR
 }
 
@@ -62,7 +65,7 @@ pub extern "C" fn frozt_sign_commit(
 
         let commitments_bytes = commitments.serialize().map_err(ser_err)?;
 
-        *out_nonces = Handle::allocate(nonces);
+        *out_nonces = Handle::allocate(nonces)?;
         *out_commitments = tss_buffer::from_vec(commitments_bytes);
 
         Ok(())

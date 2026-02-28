@@ -197,13 +197,6 @@ func TestFullFlow(t *testing.T) {
 	sig2 := runSign(t, keyPackages, pubKeyPackage, []int{1, 2}, msg)
 	t.Logf("signature: %x (%d bytes)", sig2, len(sig2))
 
-	t.Log("=== Address Derivation ===")
-	zAddr, err := DeriveZAddress(pubKeyPackage)
-	if err != nil {
-		t.Fatalf("DeriveZAddress: %v", err)
-	}
-	t.Logf("z-address: %s", zAddr)
-
 	t.Log("=== All operations successful ===")
 }
 

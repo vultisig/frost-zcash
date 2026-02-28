@@ -34,6 +34,9 @@ type BarrierResponse struct {
 	ReadyParties []string        `json:"ready_parties"`
 }
 
+// WARNING: Messages are not authenticated. A malicious relay or MITM can
+// inject, modify, or drop messages. For production use, add message signing
+// with each party's identity key and enforce TLS certificate verification.
 type RelayClient struct {
 	BaseURL    string
 	HTTPClient *http.Client

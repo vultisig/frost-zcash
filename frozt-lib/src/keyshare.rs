@@ -13,10 +13,14 @@ use crate::{
 type J = JubjubBlake2b512;
 type Identifier = frost_core::Identifier<J>;
 
-fn ser_err<E: std::fmt::Debug>(_: E) -> lib_error {
+fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
+    #[cfg(debug_assertions)]
+    eprintln!("frozt serialization error: {:?}", e);
+    let _ = e;
     lib_error::LIB_SERIALIZATION_ERROR
 }
 
+/// Lookup table for identifier bytes → u16. Supports identifiers 1..=256.
 static ID_LOOKUP: OnceLock<HashMap<Vec<u8>, u16>> = OnceLock::new();
 
 fn get_id_lookup() -> &'static HashMap<Vec<u8>, u16> {
