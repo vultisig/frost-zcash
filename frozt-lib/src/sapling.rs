@@ -15,6 +15,13 @@ type J = JubjubBlake2b512;
 
 const EXTRAS_LEN: usize = 96;
 
+fn hardened_account_child(account_index: u32) -> Result<ChildIndex, lib_error> {
+    if account_index >= (1u32 << 31) {
+        return Err(lib_error::LIB_SAPLING_ERROR);
+    }
+    Ok(ChildIndex::hardened(account_index))
+}
+
 #[no_mangle]
 pub extern "C" fn frozt_sapling_generate_extras(
     out_sapling_extras: Option<&mut tss_buffer>,
@@ -99,10 +106,11 @@ pub extern "C" fn frozt_derive_sapling_extras_from_seed(
         }
 
         let master = ExtendedSpendingKey::master(seed_data.as_slice());
+        let account = hardened_account_child(account_index)?;
         let path = [
             ChildIndex::hardened(32),
             ChildIndex::hardened(133),
-            ChildIndex::hardened(account_index),
+            account,
         ];
         let child = ExtendedSpendingKey::from_path(&master, &path);
 
@@ -171,7 +179,8 @@ mod tests {
             lib_error::LIB_OK,
         );
         let addr = String::from_utf8(addr_buf.into_vec()).unwrap();
-        assert!(addr.starts_with("zs"), "address should start with zs: {}", addr);
+        let expected = "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s";
+        assert_eq!(addr, expected, "z-address should match wallet for 0xAB seed");
     }
 
     #[test]
@@ -266,5 +275,75 @@ mod tests {
         );
         let addr = String::from_utf8(addr_buf.into_vec()).unwrap();
         assert!(addr.starts_with("zs"), "address should start with zs: {}", addr);
+    }
+
+    #[test]
+    fn test_sapling_second_mnemonic_verification() {
+        // "divorce ride face oxygen tank fossil trim aunt exact beauty evoke entry"
+        let seed = hex::decode(
+            "23068a91016aea698ecaed597ef3c9faffcd849f500f9bb9462eae0fa5229685\
+             316ce51f7da4dc90dc98cfadb3e4756ace08e85cfe5d0d25c0acdf96e30363b9"
+        ).unwrap();
+
+        let seed_slice = go_slice::from(seed.as_slice());
+        let mut sk_buf = tss_buffer::empty();
+        assert_eq!(
+            key_import::frozt_derive_spending_key_from_seed(Some(&seed_slice), 0, Some(&mut sk_buf)),
+            lib_error::LIB_OK,
+        );
+        let sk = sk_buf.into_vec();
+
+        let sk_slice = go_slice::from(sk.as_slice());
+        let mut vk_buf = tss_buffer::empty();
+        assert_eq!(
+            key_import::frozt_spending_key_to_verifying_key(Some(&sk_slice), Some(&mut vk_buf)),
+            lib_error::LIB_OK,
+        );
+        let vk = vk_buf.into_vec();
+
+        let results = crate::key_import::tests::run_key_import(3, 2, &sk, &vk);
+        let pkp = &results[0].1;
+
+        let mut extras_buf = tss_buffer::empty();
+        assert_eq!(
+            frozt_derive_sapling_extras_from_seed(Some(&seed_slice), 0, Some(&mut extras_buf)),
+            lib_error::LIB_OK,
+        );
+        let extras = extras_buf.into_vec();
+
+        let pkp_slice = go_slice::from(pkp.as_slice());
+        let extras_slice = go_slice::from(extras.as_slice());
+        let mut addr_buf = tss_buffer::empty();
+        assert_eq!(
+            frozt_sapling_derive_address(
+                Some(&pkp_slice),
+                Some(&extras_slice),
+                Some(&mut addr_buf),
+            ),
+            lib_error::LIB_OK,
+        );
+        let addr = String::from_utf8(addr_buf.into_vec()).unwrap();
+
+        let expected = "zs1ghykkprzrcdpkyye0skmddldfhcxj8w4x7kvm9yvm739z2h9xxdqy7n8ntv4p36032zww8pv6e8";
+        assert_eq!(addr, expected, "z-address should match wallet for divorce mnemonic");
+
+        crate::sign::tests::run_sign(&results, &[0, 1]);
+        crate::sign::tests::run_sign(&results, &[1, 2]);
+    }
+
+    #[test]
+    fn test_sapling_extras_rejects_out_of_range_account_index() {
+        let seed = [0xABu8; 64];
+        let seed_slice = go_slice::from(seed.as_slice());
+        let mut extras_buf = tss_buffer::empty();
+
+        assert_eq!(
+            frozt_derive_sapling_extras_from_seed(
+                Some(&seed_slice),
+                1u32 << 31,
+                Some(&mut extras_buf),
+            ),
+            lib_error::LIB_SAPLING_ERROR,
+        );
     }
 }

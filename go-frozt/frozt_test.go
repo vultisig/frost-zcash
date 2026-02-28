@@ -475,6 +475,10 @@ func TestKeyImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaplingDeriveAddress: %v", err)
 	}
+	expectedAddr := "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s"
+	if zAddr != expectedAddr {
+		t.Fatalf("z-address mismatch:\n  got:  %s\n  want: %s", zAddr, expectedAddr)
+	}
 	t.Logf("z-address: %s", zAddr)
 
 	t.Log("=== All key import operations successful ===")
@@ -553,4 +557,18 @@ func TestSaplingExtras(t *testing.T) {
 	t.Logf("z-address: %s", addr)
 
 	t.Log("=== All sapling extras operations successful ===")
+}
+
+func TestRejectOutOfRangeAccountIndex(t *testing.T) {
+	seed := make([]byte, 64)
+
+	_, err := DeriveSpendingKeyFromSeed(seed, 1<<31)
+	if err == nil {
+		t.Fatal("expected DeriveSpendingKeyFromSeed to reject out-of-range account index")
+	}
+
+	_, err = DeriveSaplingExtrasFromSeed(seed, 1<<31)
+	if err == nil {
+		t.Fatal("expected DeriveSaplingExtrasFromSeed to reject out-of-range account index")
+	}
 }

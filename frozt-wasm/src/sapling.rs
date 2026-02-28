@@ -11,6 +11,15 @@ use crate::{to_js_err, J};
 
 const EXTRAS_LEN: usize = 96;
 
+fn hardened_account_child(account_index: u32) -> Result<ChildIndex, JsError> {
+    if account_index >= (1u32 << 31) {
+        return Err(JsError::new(
+            "account index out of range; expected 0..2^31-1",
+        ));
+    }
+    Ok(ChildIndex::hardened(account_index))
+}
+
 #[wasm_bindgen]
 pub fn frozt_sapling_generate_extras() -> Result<Vec<u8>, JsError> {
     let mut rng = rand::thread_rng();
@@ -73,10 +82,11 @@ pub fn frozt_derive_sapling_extras_from_seed(
     }
 
     let master = ExtendedSpendingKey::master(seed);
+    let account = hardened_account_child(account_index)?;
     let path = [
         ChildIndex::hardened(32),
         ChildIndex::hardened(133),
-        ChildIndex::hardened(account_index),
+        account,
     ];
     let child = ExtendedSpendingKey::from_path(&master, &path);
 

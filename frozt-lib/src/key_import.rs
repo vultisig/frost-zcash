@@ -18,6 +18,13 @@ type Identifier = frost_core::Identifier<J>;
 type F = <<J as Ciphersuite>::Group as Group>::Field;
 type G = <J as Ciphersuite>::Group;
 
+fn hardened_account_child(account_index: u32) -> Result<ChildIndex, lib_error> {
+    if account_index >= (1u32 << 31) {
+        return Err(lib_error::LIB_KEY_IMPORT_ERROR);
+    }
+    Ok(ChildIndex::hardened(account_index))
+}
+
 fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
     #[cfg(debug_assertions)]
     eprintln!("frozt serialization error: {:?}", e);
@@ -40,10 +47,11 @@ pub extern "C" fn frozt_derive_spending_key_from_seed(
         }
 
         let master = ExtendedSpendingKey::master(seed_data.as_slice());
+        let account = hardened_account_child(account_index)?;
         let path = [
             ChildIndex::hardened(32),
             ChildIndex::hardened(133),
-            ChildIndex::hardened(account_index),
+            account,
         ];
         let child = ExtendedSpendingKey::from_path(&master, &path);
         let ask_bytes = child.expsk.ask.to_bytes();
@@ -416,5 +424,21 @@ pub(crate) mod tests {
         let z_addr = String::from_utf8(addr_buf.into_vec()).unwrap();
         let expected_z_addr = "zs1s82p0h0689ccjdfe39tvlzj6hyp2ukqrukfdvdd8cgqfgnexc958uzt0nshx2vk2l9xmxzun7vq";
         assert_eq!(z_addr, expected_z_addr, "z-address should match wallet");
+    }
+
+    #[test]
+    fn test_derive_spending_key_rejects_out_of_range_account_index() {
+        let seed = [0xABu8; 64];
+        let seed_slice = go_slice::from(seed.as_slice());
+        let mut sk_buf = tss_buffer::empty();
+
+        assert_eq!(
+            frozt_derive_spending_key_from_seed(
+                Some(&seed_slice),
+                1u32 << 31,
+                Some(&mut sk_buf),
+            ),
+            lib_error::LIB_KEY_IMPORT_ERROR,
+        );
     }
 }
