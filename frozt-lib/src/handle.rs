@@ -83,10 +83,21 @@ impl Handle {
         if map.len() >= MAX_HANDLES {
             return Err(Error::TableFull);
         }
-        let handle = loop {
-            let last = LAST.fetch_add(2, Ordering::Relaxed);
-            if !map.contains_key(&last) {
-                break last;
+        let handle = {
+            let mut attempts = 0usize;
+            loop {
+                let last = LAST.fetch_add(2, Ordering::Relaxed);
+                if last <= 0 {
+                    LAST.store(1, Ordering::Relaxed);
+                    attempts += 1;
+                    if attempts > 1 {
+                        return Err(Error::TableFull);
+                    }
+                    continue;
+                }
+                if !map.contains_key(&last) {
+                    break last;
+                }
             }
         };
         map.insert(handle, Some(obj));

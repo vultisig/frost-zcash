@@ -30,12 +30,19 @@ impl Deref for go_slice {
 }
 
 impl go_slice {
-    /// SAFETY: Caller must ensure ptr is valid for len bytes and pinned
-    /// for the lifetime of any slice returned by as_slice().
+    /// Returns the contents as a byte slice.
+    ///
+    /// # Safety invariant
+    /// This relies on the go_slice being constructed correctly: either from
+    /// Go FFI (where the caller pins memory via runtime.Pinner) or from
+    /// `From<&[u8]>` in tests. The raw pointer dereference is sound because
+    /// these are the only two construction paths in this crate.
     pub fn as_slice(&self) -> &[u8] {
         if self.is_empty() {
             return &[];
         }
+        // SAFETY: go_slice is only constructed via FFI (pinned by Go runtime)
+        // or From<&[u8]> in tests. Both guarantee ptr is valid for len bytes.
         unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
 

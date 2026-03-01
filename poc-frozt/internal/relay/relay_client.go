@@ -1,8 +1,9 @@
-package orchestration
+package relay
 
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -34,12 +37,18 @@ type BarrierResponse struct {
 	ReadyParties []string        `json:"ready_parties"`
 }
 
-// WARNING: Messages are not authenticated. A malicious relay or MITM can
-// inject, modify, or drop messages. For production use, add message signing
-// with each party's identity key and enforce TLS certificate verification.
 type RelayClient struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL             string
+	HTTPClient          *http.Client
+	EncryptionKeyHex    string
+	PartyID             string
+	MessagePollInterval time.Duration
+	BarrierPollInterval time.Duration
+	BarrierRepostCount  int
+
+	seqCounter atomic.Uint64
+	seenSeqs   map[string]map[uint64]bool
+	seenMu     sync.Mutex
 }
 
 func NewRelayClient(baseURL string) *RelayClient {
@@ -48,6 +57,22 @@ func NewRelayClient(baseURL string) *RelayClient {
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		MessagePollInterval: 50 * time.Millisecond,
+		BarrierPollInterval: 100 * time.Millisecond,
+		BarrierRepostCount:  10,
+	}
+}
+
+func NewRelayClientWithEncryption(baseURL, encryptionKeyHex string) *RelayClient {
+	return &RelayClient{
+		BaseURL: baseURL,
+		HTTPClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		EncryptionKeyHex:    encryptionKeyHex,
+		MessagePollInterval: 50 * time.Millisecond,
+		BarrierPollInterval: 100 * time.Millisecond,
+		BarrierRepostCount:  10,
 	}
 }
 
@@ -105,15 +130,20 @@ func (c *RelayClient) GetSessionParties(ctx context.Context, sessionID string) (
 }
 
 func (c *RelayClient) SendMessage(ctx context.Context, sessionID, messageID string, msg Message) error {
-	body, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshal message: %w", err)
-	}
+	msg.SequenceNo = c.seqCounter.Add(1)
 
 	hash := sha256.Sum256([]byte(msg.Body))
 	msg.Hash = hex.EncodeToString(hash[:])
 
-	body, err = json.Marshal(msg)
+	if c.EncryptionKeyHex != "" {
+		encrypted, encErr := Encrypt(msg.Body, c.EncryptionKeyHex)
+		if encErr != nil {
+			return fmt.Errorf("encrypt message: %w", encErr)
+		}
+		msg.Body = encrypted
+	}
+
+	body, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal message: %w", err)
 	}
@@ -127,6 +157,7 @@ func (c *RelayClient) SendMessage(ctx context.Context, sessionID, messageID stri
 	if messageID != "" {
 		req.Header.Set("message_id", messageID)
 	}
+	c.setAuthHeader(req, sessionID, c.PartyID)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -150,6 +181,7 @@ func (c *RelayClient) GetMessages(ctx context.Context, sessionID, participantID,
 	if messageID != "" {
 		req.Header.Set("message_id", messageID)
 	}
+	c.setAuthHeader(req, sessionID, c.PartyID)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -249,4 +281,62 @@ func (c *RelayClient) CompleteTSS(ctx context.Context, sessionID string, parties
 		return fmt.Errorf("complete tss: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *RelayClient) setAuthHeader(req *http.Request, sessionID, partyID string) {
+	if c.EncryptionKeyHex == "" {
+		return
+	}
+	keyBytes, err := hex.DecodeString(c.EncryptionKeyHex)
+	if err != nil {
+		return
+	}
+	mac := hmac.New(sha256.New, keyBytes)
+	mac.Write([]byte(sessionID + ":" + partyID))
+	token := hex.EncodeToString(mac.Sum(nil))
+	req.Header.Set("X-Session-Token", token)
+	req.Header.Set("X-Party-ID", partyID)
+}
+
+func (c *RelayClient) DecryptBody(body string) (string, error) {
+	if c.EncryptionKeyHex == "" {
+		return body, nil
+	}
+	return Decrypt(body, c.EncryptionKeyHex)
+}
+
+func (c *RelayClient) DecryptAndVerify(msg Message) (string, error) {
+	plaintext, err := c.DecryptBody(msg.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if msg.Hash != "" {
+		hash := sha256.Sum256([]byte(plaintext))
+		expected := hex.EncodeToString(hash[:])
+		if expected != msg.Hash {
+			return "", fmt.Errorf("message hash mismatch: relay may have tampered with body")
+		}
+	}
+
+	if msg.SequenceNo > 0 {
+		key := msg.SessionID + ":" + msg.From
+		c.seenMu.Lock()
+		if c.seenSeqs == nil {
+			c.seenSeqs = make(map[string]map[uint64]bool)
+		}
+		seqs, ok := c.seenSeqs[key]
+		if !ok {
+			seqs = make(map[uint64]bool)
+			c.seenSeqs[key] = seqs
+		}
+		if seqs[msg.SequenceNo] {
+			c.seenMu.Unlock()
+			return "", fmt.Errorf("replay detected: duplicate sequence %d from %s", msg.SequenceNo, msg.From)
+		}
+		seqs[msg.SequenceNo] = true
+		c.seenMu.Unlock()
+	}
+
+	return plaintext, nil
 }

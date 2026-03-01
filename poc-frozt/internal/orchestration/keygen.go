@@ -9,16 +9,13 @@ import (
 	"time"
 
 	frozt "github.com/vultisig/frozt-zcash/go-frozt"
-)
-
-const (
-	messagePollInterval = 50 * time.Millisecond
+	"github.com/vultisig/frozt-zcash/poc-frozt/internal/relay"
 )
 
 type KeygenResult struct {
 	KeyPackage    []byte
 	PubKeyPackage []byte
-	SaplingExtras []byte // 96 bytes: nsk(32) || ovk(32) || dk(32)
+	SaplingExtras []byte
 }
 
 type RoundMessage struct {
@@ -27,7 +24,7 @@ type RoundMessage struct {
 	ReceiverID uint16 `json:"receiver_id,omitempty"`
 }
 
-func RunKeygen(ctx context.Context, client *RelayClient, sessionID, partyID string, identifier, maxSigners, minSigners uint16, allParties []string) (*KeygenResult, error) {
+func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier, maxSigners, minSigners uint16, allParties []string) (*KeygenResult, error) {
 	secret1, round1Pkg, err := frozt.DkgPart1(identifier, maxSigners, minSigners)
 	if err != nil {
 		return nil, fmt.Errorf("dkg part1: %w", err)
@@ -42,8 +39,8 @@ func RunKeygen(ctx context.Context, client *RelayClient, sessionID, partyID stri
 		return nil, fmt.Errorf("marshal round1 msg: %w", err)
 	}
 
-	recipients := otherParties(allParties, partyID)
-	err = client.SendMessage(ctx, sessionID, "dkg-round1", Message{
+	recipients := OtherParties(allParties, partyID)
+	err = client.SendMessage(ctx, sessionID, "dkg-round1", relay.Message{
 		SessionID: sessionID,
 		From:      partyID,
 		To:        recipients,
@@ -116,8 +113,8 @@ func RunKeygen(ctx context.Context, client *RelayClient, sessionID, partyID stri
 	}, nil
 }
 
-func exchangeSaplingExtras(ctx context.Context, client *RelayClient, sessionID, partyID string, identifier uint16, allParties []string) ([]byte, error) {
-	isCoordinator := identifier == 1
+func exchangeSaplingExtras(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, allParties []string) ([]byte, error) {
+	isCoordinator := IsCoordinatorParty(partyID, allParties)
 
 	if isCoordinator {
 		extras, err := frozt.SaplingGenerateExtras()
@@ -134,8 +131,8 @@ func exchangeSaplingExtras(ctx context.Context, client *RelayClient, sessionID, 
 			return nil, fmt.Errorf("marshal sapling extras: %w", err)
 		}
 
-		recipients := otherParties(allParties, partyID)
-		err = client.SendMessage(ctx, sessionID, "sapling-extras", Message{
+		recipients := OtherParties(allParties, partyID)
+		err = client.SendMessage(ctx, sessionID, "sapling-extras", relay.Message{
 			SessionID: sessionID,
 			From:      partyID,
 			To:        recipients,
@@ -161,7 +158,7 @@ func exchangeSaplingExtras(ctx context.Context, client *RelayClient, sessionID, 
 	return extras, nil
 }
 
-func collectMessages(ctx context.Context, client *RelayClient, sessionID, partyID, messageID string, expected int) ([]RoundMessage, error) {
+func collectMessages(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string, expected int) ([]RoundMessage, error) {
 	var collected []RoundMessage
 	seen := make(map[uint16]bool)
 
@@ -178,8 +175,12 @@ func collectMessages(ctx context.Context, client *RelayClient, sessionID, partyI
 		}
 
 		for _, m := range msgs {
+			body, decErr := client.DecryptAndVerify(m)
+			if decErr != nil {
+				return nil, fmt.Errorf("decrypt round message: %w", decErr)
+			}
 			var rm RoundMessage
-			err = json.Unmarshal([]byte(m.Body), &rm)
+			err = json.Unmarshal([]byte(body), &rm)
 			if err != nil {
 				return nil, fmt.Errorf("unmarshal round message: %w", err)
 			}
@@ -190,7 +191,7 @@ func collectMessages(ctx context.Context, client *RelayClient, sessionID, partyI
 		}
 
 		if len(collected) < expected {
-			time.Sleep(messagePollInterval)
+			time.Sleep(client.MessagePollInterval)
 		}
 	}
 
@@ -200,30 +201,23 @@ func collectMessages(ctx context.Context, client *RelayClient, sessionID, partyI
 func buildRoundMap(messages []RoundMessage) ([]frozt.MapEntry, error) {
 	entries := make([]frozt.MapEntry, 0, len(messages))
 	for _, m := range messages {
-		idBytes, err := frozt.EncodeIdentifier(m.SenderID)
-		if err != nil {
-			return nil, fmt.Errorf("encode identifier %d: %w", m.SenderID, err)
-		}
 		data, err := base64.StdEncoding.DecodeString(m.Data)
 		if err != nil {
 			return nil, fmt.Errorf("decode base64 from sender %d: %w", m.SenderID, err)
 		}
 		entries = append(entries, frozt.MapEntry{
-			ID:    idBytes,
+			ID:    m.SenderID,
 			Value: data,
 		})
 	}
 	return entries, nil
 }
 
-func sendPerRecipient(ctx context.Context, client *RelayClient, sessionID, partyID, messageID string, senderIdentifier uint16, mapEntries []frozt.MapEntry, allParties []string) error {
+func sendPerRecipient(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string, senderIdentifier uint16, mapEntries []frozt.MapEntry, allParties []string) error {
 	partyMap := buildPartyIdentifierMap(allParties)
 
 	for _, entry := range mapEntries {
-		recipientID, err := frozt.DecodeIdentifier(entry.ID)
-		if err != nil {
-			return fmt.Errorf("decode recipient id: %w", err)
-		}
+		recipientID := entry.ID
 
 		recipientPartyID, ok := partyMap[recipientID]
 		if !ok {
@@ -240,7 +234,7 @@ func sendPerRecipient(ctx context.Context, client *RelayClient, sessionID, party
 			return err
 		}
 
-		err = client.SendMessage(ctx, sessionID, messageID, Message{
+		err = client.SendMessage(ctx, sessionID, messageID, relay.Message{
 			SessionID: sessionID,
 			From:      partyID,
 			To:        []string{recipientPartyID},
@@ -254,7 +248,7 @@ func sendPerRecipient(ctx context.Context, client *RelayClient, sessionID, party
 	return nil
 }
 
-func otherParties(all []string, self string) []string {
+func OtherParties(all []string, self string) []string {
 	var others []string
 	for _, p := range all {
 		if p != self {

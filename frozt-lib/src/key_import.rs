@@ -11,6 +11,7 @@ use crate::{
     errors::*,
     handle::Handle,
     keygen::{decode_r1_map, decode_r2_map},
+    zeroize_scalar_vec,
 };
 
 type J = JubjubBlake2b512;
@@ -32,67 +33,43 @@ fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
     lib_error::LIB_SERIALIZATION_ERROR
 }
 
-#[no_mangle]
-pub extern "C" fn frozt_derive_spending_key_from_seed(
-    seed: Option<&go_slice>,
-    account_index: u32,
-    out_spending_key: Option<&mut tss_buffer>,
-) -> lib_error {
-    with_error_handler(|| {
-        let seed_data = seed.ok_or(lib_error::LIB_NULL_PTR)?;
-        let out_sk = out_spending_key.ok_or(lib_error::LIB_NULL_PTR)?;
-
-        if seed_data.len() != 64 {
-            return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
-        }
-
-        let master = ExtendedSpendingKey::master(seed_data.as_slice());
-        let account = hardened_account_child(account_index)?;
-        let path = [
-            ChildIndex::hardened(32),
-            ChildIndex::hardened(133),
-            account,
-        ];
-        let child = ExtendedSpendingKey::from_path(&master, &path);
-        let ask_bytes = child.expsk.ask.to_bytes();
-
-        *out_sk = tss_buffer::from_vec(ask_bytes.to_vec());
-
-        Ok(())
-    })
+fn derive_spending_key(seed: &[u8], account_index: u32) -> Result<[u8; 32], lib_error> {
+    if seed.len() != 64 {
+        return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
+    }
+    let master = ExtendedSpendingKey::master(seed);
+    let account = hardened_account_child(account_index)?;
+    let path = [
+        ChildIndex::hardened(32),
+        ChildIndex::hardened(133),
+        account,
+    ];
+    let child = ExtendedSpendingKey::from_path(&master, &path);
+    let mut ask_bytes = child.expsk.ask.to_bytes();
+    let result = ask_bytes;
+    zeroize::Zeroize::zeroize(&mut ask_bytes);
+    Ok(result)
 }
 
-#[no_mangle]
-pub extern "C" fn frozt_spending_key_to_verifying_key(
-    spending_key: Option<&go_slice>,
-    out_verifying_key: Option<&mut tss_buffer>,
-) -> lib_error {
-    with_error_handler(|| {
-        let sk_data = spending_key.ok_or(lib_error::LIB_NULL_PTR)?;
-        let out_vk = out_verifying_key.ok_or(lib_error::LIB_NULL_PTR)?;
-
-        let sk_arr: &[u8; 32] = sk_data.as_slice()
-            .try_into()
-            .map_err(|_| lib_error::LIB_INVALID_BUFFER_SIZE)?;
-        let scalar = F::deserialize(sk_arr).map_err(ser_err)?;
-        let point = G::generator() * scalar;
-        let vk_bytes =
-            <J as Ciphersuite>::Group::serialize(&point).map_err(ser_err)?;
-
-        *out_vk = tss_buffer::from_vec(vk_bytes.as_ref().to_vec());
-
-        Ok(())
-    })
+fn spending_key_to_vk(spending_key: &[u8; 32]) -> Result<Vec<u8>, lib_error> {
+    let scalar = F::deserialize(spending_key).map_err(ser_err)?;
+    let point = G::generator() * scalar;
+    let vk_bytes =
+        <J as Ciphersuite>::Group::serialize(&point).map_err(ser_err)?;
+    Ok(vk_bytes.as_ref().to_vec())
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_key_import_part1(
     identifier: u16,
     max_signers: u16,
     min_signers: u16,
-    spending_key: Option<&go_slice>,
+    seed: Option<&go_slice>,
+    account_index: u32,
     out_secret: Option<&mut Handle>,
     out_package: Option<&mut tss_buffer>,
+    out_vk: Option<&mut tss_buffer>,
+    out_extras: Option<&mut tss_buffer>,
 ) -> lib_error {
     with_error_handler(|| {
         let out_secret = out_secret.ok_or(lib_error::LIB_NULL_PTR)?;
@@ -105,12 +82,20 @@ pub extern "C" fn frozt_key_import_part1(
         let id = Identifier::try_from(identifier)
             .map_err(|_| lib_error::LIB_INVALID_IDENTIFIER)?;
 
-        let constant_term = match spending_key {
-            Some(sk_data) if !sk_data.is_empty() => {
-                let sk_arr: &[u8; 32] = sk_data.as_slice()
-                    .try_into()
-                    .map_err(|_| lib_error::LIB_INVALID_BUFFER_SIZE)?;
-                let sk_scalar = F::deserialize(sk_arr).map_err(ser_err)?;
+        let constant_term = match seed {
+            Some(seed_data) if !seed_data.is_empty() => {
+                let sk = derive_spending_key(seed_data.as_slice(), account_index)?;
+                let vk = spending_key_to_vk(&sk)?;
+                let extras = crate::sapling::derive_extras_from_seed(seed_data.as_slice(), account_index)?;
+
+                if let Some(out_v) = out_vk {
+                    *out_v = tss_buffer::from_vec(vk);
+                }
+                if let Some(out_e) = out_extras {
+                    *out_e = tss_buffer::from_vec(extras);
+                }
+
+                let sk_scalar = F::deserialize(&sk).map_err(ser_err)?;
                 let num_others = (max_signers - 1) as u64;
                 let mut result = sk_scalar;
                 for _ in 0..num_others {
@@ -142,11 +127,13 @@ pub extern "C" fn frozt_key_import_part1(
 
         let secret = dkg::round1::SecretPackage::new(
             id,
-            coefficients,
+            coefficients.clone(),
             commitment.clone(),
             min_signers,
             max_signers,
         );
+
+        zeroize_scalar_vec(&mut coefficients);
 
         let package = dkg::round1::Package::new(commitment, proof);
         let pkg_bytes = package.serialize().map_err(ser_err)?;
@@ -158,7 +145,7 @@ pub extern "C" fn frozt_key_import_part1(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_key_import_part3(
     secret: Handle,
     round1_packages: Option<&go_slice>,
@@ -204,34 +191,52 @@ pub(crate) mod tests {
     use crate::keygen::tests::{decode_test_map, encode_test_map};
     use crate::sign::tests::run_sign;
 
+    pub struct KeyImportResult {
+        pub results: Vec<(Vec<u8>, Vec<u8>)>,
+        pub vk: Vec<u8>,
+        pub extras: Vec<u8>,
+    }
+
     pub fn run_key_import(
         n: u16,
         t: u16,
-        spending_key: &[u8],
-        expected_vk: &[u8],
-    ) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let sk_slice = go_slice::from(spending_key);
+        seed: &[u8],
+        account_index: u32,
+    ) -> KeyImportResult {
+        let seed_slice = go_slice::from(seed);
 
         let mut secrets1 = Vec::new();
         let mut packages1 = Vec::new();
+        let mut vk = Vec::new();
+        let mut extras = Vec::new();
 
         for i in 1..=n {
             let mut secret = Handle::null();
             let mut package = tss_buffer::empty();
+            let mut vk_buf = tss_buffer::empty();
+            let mut extras_buf = tss_buffer::empty();
 
-            let sk_opt = if i == 1 { Some(&sk_slice) } else { None };
+            let seed_opt = if i == 1 { Some(&seed_slice) } else { None };
 
             assert_eq!(
                 frozt_key_import_part1(
                     i,
                     n,
                     t,
-                    sk_opt,
+                    seed_opt,
+                    account_index,
                     Some(&mut secret),
                     Some(&mut package),
+                    Some(&mut vk_buf),
+                    Some(&mut extras_buf),
                 ),
                 lib_error::LIB_OK,
             );
+
+            if i == 1 {
+                vk = vk_buf.into_vec();
+                extras = extras_buf.into_vec();
+            }
 
             secrets1.push(secret);
             packages1.push((i, package.into_vec()));
@@ -297,7 +302,7 @@ pub(crate) mod tests {
             let r2_map = encode_test_map(&r2_for_me);
             let r1_slice = go_slice::from(r1_map.as_slice());
             let r2_slice = go_slice::from(r2_map.as_slice());
-            let vk_slice = go_slice::from(expected_vk);
+            let vk_slice = go_slice::from(vk.as_slice());
 
             let mut kp = tss_buffer::empty();
             let mut pkp = tss_buffer::empty();
@@ -317,55 +322,29 @@ pub(crate) mod tests {
             results.push((kp.into_vec(), pkp.into_vec()));
         }
 
-        results
-    }
-
-    fn derive_test_key(account: u32) -> (Vec<u8>, Vec<u8>) {
-        let seed = [0xABu8; 64];
-        let seed_slice = go_slice::from(seed.as_slice());
-
-        let mut sk_buf = tss_buffer::empty();
-        assert_eq!(
-            frozt_derive_spending_key_from_seed(
-                Some(&seed_slice),
-                account,
-                Some(&mut sk_buf),
-            ),
-            lib_error::LIB_OK,
-        );
-        let sk = sk_buf.into_vec();
-
-        let sk_slice = go_slice::from(sk.as_slice());
-        let mut vk_buf = tss_buffer::empty();
-        assert_eq!(
-            frozt_spending_key_to_verifying_key(Some(&sk_slice), Some(&mut vk_buf)),
-            lib_error::LIB_OK,
-        );
-        let vk = vk_buf.into_vec();
-
-        (sk, vk)
+        KeyImportResult { results, vk, extras }
     }
 
     #[test]
     fn test_key_import_2of3() {
-        let (sk, vk) = derive_test_key(0);
+        let seed = [0xABu8; 64];
 
-        let results = run_key_import(3, 2, &sk, &vk);
-        assert_eq!(results.len(), 3);
+        let import = run_key_import(3, 2, &seed, 0);
+        assert_eq!(import.results.len(), 3);
 
-        run_sign(&results, &[0, 1]);
-        run_sign(&results, &[1, 2]);
+        run_sign(&import.results, &[0, 1]);
+        run_sign(&import.results, &[1, 2]);
     }
 
     #[test]
     fn test_key_import_3of4() {
-        let (sk, vk) = derive_test_key(1);
+        let seed = [0xABu8; 64];
 
-        let results = run_key_import(4, 3, &sk, &vk);
-        assert_eq!(results.len(), 4);
+        let import = run_key_import(4, 3, &seed, 1);
+        assert_eq!(import.results.len(), 4);
 
-        run_sign(&results, &[0, 1, 2]);
-        run_sign(&results, &[1, 2, 3]);
+        run_sign(&import.results, &[0, 1, 2]);
+        run_sign(&import.results, &[1, 2, 3]);
     }
 
     #[test]
@@ -376,48 +355,26 @@ pub(crate) mod tests {
         ).unwrap();
         assert_eq!(seed.len(), 64);
 
-        let seed_slice = go_slice::from(seed.as_slice());
-        let mut sk_buf = tss_buffer::empty();
-        assert_eq!(
-            frozt_derive_spending_key_from_seed(Some(&seed_slice), 0, Some(&mut sk_buf)),
-            lib_error::LIB_OK,
-        );
-        let sk = sk_buf.into_vec();
+        let import = run_key_import(3, 2, &seed, 0);
+        assert_eq!(import.results.len(), 3);
 
-        let sk_slice = go_slice::from(sk.as_slice());
-        let mut vk_buf = tss_buffer::empty();
-        assert_eq!(
-            frozt_spending_key_to_verifying_key(Some(&sk_slice), Some(&mut vk_buf)),
-            lib_error::LIB_OK,
-        );
-        let vk = vk_buf.into_vec();
+        run_sign(&import.results, &[0, 1]);
+        run_sign(&import.results, &[1, 2]);
+        run_sign(&import.results, &[0, 2]);
 
-        let results = run_key_import(3, 2, &sk, &vk);
-        assert_eq!(results.len(), 3);
-
-        run_sign(&results, &[0, 1]);
-        run_sign(&results, &[1, 2]);
-        run_sign(&results, &[0, 2]);
-
-        let pkp = frost_core::keys::PublicKeyPackage::<J>::deserialize(&results[0].1).unwrap();
+        let pkp = frost_core::keys::PublicKeyPackage::<J>::deserialize(&import.results[0].1).unwrap();
         let group_vk = pkp.verifying_key().serialize().unwrap();
-        assert_eq!(group_vk, vk);
+        assert_eq!(group_vk, import.vk);
 
-        let mut extras_buf = tss_buffer::empty();
-        assert_eq!(
-            crate::sapling::frozt_derive_sapling_extras_from_seed(
-                Some(&seed_slice), 0, Some(&mut extras_buf),
-            ),
-            lib_error::LIB_OK,
-        );
-        let extras = extras_buf.into_vec();
-
-        let pkp_slice = go_slice::from(results[0].1.as_slice());
-        let extras_slice = go_slice::from(extras.as_slice());
+        let pkp_slice = go_slice::from(import.results[0].1.as_slice());
+        let extras_slice = go_slice::from(import.extras.as_slice());
         let mut addr_buf = tss_buffer::empty();
+        let mut ivk_buf = tss_buffer::empty();
+        let mut nk_buf = tss_buffer::empty();
         assert_eq!(
-            crate::sapling::frozt_sapling_derive_address(
-                Some(&pkp_slice), Some(&extras_slice), Some(&mut addr_buf),
+            crate::sapling::frozt_sapling_derive_keys(
+                Some(&pkp_slice), Some(&extras_slice),
+                Some(&mut addr_buf), Some(&mut ivk_buf), Some(&mut nk_buf),
             ),
             lib_error::LIB_OK,
         );
@@ -427,16 +384,23 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_derive_spending_key_rejects_out_of_range_account_index() {
+    fn test_key_import_rejects_out_of_range_account_index() {
         let seed = [0xABu8; 64];
         let seed_slice = go_slice::from(seed.as_slice());
-        let mut sk_buf = tss_buffer::empty();
+        let mut secret = Handle::null();
+        let mut package = tss_buffer::empty();
+        let mut vk_buf = tss_buffer::empty();
+        let mut extras_buf = tss_buffer::empty();
 
         assert_eq!(
-            frozt_derive_spending_key_from_seed(
+            frozt_key_import_part1(
+                1, 3, 2,
                 Some(&seed_slice),
                 1u32 << 31,
-                Some(&mut sk_buf),
+                Some(&mut secret),
+                Some(&mut package),
+                Some(&mut vk_buf),
+                Some(&mut extras_buf),
             ),
             lib_error::LIB_KEY_IMPORT_ERROR,
         );

@@ -1,24 +1,26 @@
 FROM rust:1.83-bookworm AS rust-builder
 
 WORKDIR /build
-COPY frozt-zcash/Cargo.toml frozt-zcash/rust-toolchain.toml ./
-COPY frozt-zcash/frozt-lib/ frozt-lib/
-COPY frozt-zcash/frozt-wasm/ frozt-wasm/
+COPY frost-zcash/Cargo.toml frost-zcash/rust-toolchain.toml ./
+COPY frost-zcash/frozt-lib/ frozt-lib/
+COPY frost-zcash/frozt-wasm/ frozt-wasm/
 
 RUN cargo build --release -p frozt-lib
 
-FROM golang:1.22-bookworm AS go-builder
+FROM golang:1.24-bookworm AS go-builder
 
 COPY --from=rust-builder /build/target/release/libfroztlib.so /usr/lib/
 RUN ldconfig
 
 WORKDIR /build
-COPY frozt-zcash/go-frozt/ go-frozt/
-COPY frozt-zcash/poc-frozt/ poc-frozt/
+COPY frost-zcash/go-frozt/ go-frozt/
+COPY frost-zcash/poc-frozt/ poc-frozt/
 
 COPY --from=rust-builder /build/frozt-lib/include/frozt-lib.h go-frozt/includes/
-RUN mkdir -p go-frozt/includes/linux && \
-    cp /usr/lib/libfroztlib.so go-frozt/includes/linux/
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then LIBDIR=linux-amd64; else LIBDIR=linux-arm64; fi && \
+    mkdir -p go-frozt/includes/$LIBDIR && \
+    cp /usr/lib/libfroztlib.so go-frozt/includes/$LIBDIR/
 
 WORKDIR /build/poc-frozt
 RUN CGO_ENABLED=1 go build -o /frozt-party ./cmd/frozt-party

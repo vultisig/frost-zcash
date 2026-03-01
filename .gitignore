@@ -12,3 +12,6 @@ frozt-wasm/pkg/frozt_wasm_bg.wasm
 frozt-wasm/pkg/frozt_wasm_bg.wasm.d.ts
 frozt-wasm/pkg/frozt_wasm.js
 frozt-wasm/pkg/frozt_wasm.d.ts
+
+# Secrets
+poc-frozt/.env

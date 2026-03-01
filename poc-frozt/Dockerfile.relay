@@ -10,7 +10,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /relay-server /usr/local/bin/relay-server
-COPY frozt-zcash/poc-frozt/relay-config.json /etc/relay/config.json
+COPY frost-zcash/poc-frozt/relay-config.json /etc/relay/config.json
 
 EXPOSE 9090
 

@@ -1,0 +1,22 @@
+use reddsa::frost::redjubjub::JubjubBlake2b512;
+
+type Scalar = frost_core::Scalar<JubjubBlake2b512>;
+
+/// Zeroes the in-memory representation of a jubjub scalar.
+/// jubjub::Fr doesn't implement Zeroize, so we use volatile writes directly.
+pub fn zeroize_scalar(s: &mut Scalar) {
+    // SAFETY: We overwrite the scalar's memory with zeros via volatile writes
+    // to prevent the compiler from optimizing away the zeroing.
+    unsafe {
+        let ptr = s as *mut Scalar as *mut u8;
+        let len = std::mem::size_of::<Scalar>();
+        std::ptr::write_bytes(ptr, 0, len);
+    }
+}
+
+/// Zeroes all scalars in a Vec, then drops the Vec.
+pub fn zeroize_scalar_vec(v: &mut Vec<Scalar>) {
+    for s in v.iter_mut() {
+        zeroize_scalar(s);
+    }
+}

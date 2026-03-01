@@ -14,9 +14,20 @@ frost-rerandomized = "2.2"
 reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552", features = ["frost"] }
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
-sapling-crypto = "0.6"
+sapling-crypto = { version = "0.6", default-features = false, features = ["circuit"] }
 jubjub = "0.10"
 ff = "0.13"
 group = "0.13"
 bech32 = "0.11"
 zip32 = "0.2"
+zcash_note_encryption = "0.4"
+incrementalmerkletree = { version = "0.8", features = ["legacy-api"] }
+byteorder = "1"
+hex = "0.4"
+zeroize = "1"
+frozt-lib = { path = "../frozt-lib", default-features = false }
+blake2b_simd = "1"
+redjubjub = "0.8"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

@@ -5,21 +5,12 @@ import (
 	"testing"
 )
 
-func mustEncodeID(t *testing.T, id uint16) []byte {
-	t.Helper()
-	b, err := EncodeIdentifier(id)
-	if err != nil {
-		t.Fatalf("EncodeIdentifier(%d): %v", id, err)
-	}
-	return b
-}
-
 func runDKG(t *testing.T, n, threshold uint16) (keyPackages [][]byte, pubKeyPackage []byte) {
 	t.Helper()
 
 	type party struct {
 		id     uint16
-		secret Handle
+		secret DkgSecretHandle
 		r1Pkg  []byte
 	}
 
@@ -34,7 +25,7 @@ func runDKG(t *testing.T, n, threshold uint16) (keyPackages [][]byte, pubKeyPack
 	}
 
 	type r2Result struct {
-		secret Handle
+		secret DkgSecretHandle
 		r2Pkgs []MapEntry
 	}
 	r2Results := make([]r2Result, n)
@@ -46,7 +37,7 @@ func runDKG(t *testing.T, n, threshold uint16) (keyPackages [][]byte, pubKeyPack
 				continue
 			}
 			others = append(others, MapEntry{
-				ID:    mustEncodeID(t, parties[j].id),
+				ID:    parties[j].id,
 				Value: parties[j].r1Pkg,
 			})
 		}
@@ -64,19 +55,16 @@ func runDKG(t *testing.T, n, threshold uint16) (keyPackages [][]byte, pubKeyPack
 	}
 
 	keyPackages = make([][]byte, n)
-	myIDBytes := make([][]byte, n)
-	for i := uint16(0); i < n; i++ {
-		myIDBytes[i] = mustEncodeID(t, i+1)
-	}
 
 	for i := uint16(0); i < n; i++ {
+		myID := i + 1
 		var r1Others []MapEntry
 		for j := uint16(0); j < n; j++ {
 			if j == i {
 				continue
 			}
 			r1Others = append(r1Others, MapEntry{
-				ID:    mustEncodeID(t, parties[j].id),
+				ID:    parties[j].id,
 				Value: parties[j].r1Pkg,
 			})
 		}
@@ -86,11 +74,10 @@ func runDKG(t *testing.T, n, threshold uint16) (keyPackages [][]byte, pubKeyPack
 			if senderIdx == i {
 				continue
 			}
-			senderIDBytes := mustEncodeID(t, parties[senderIdx].id)
 			for _, entry := range r2Results[senderIdx].r2Pkgs {
-				if bytes.Equal(entry.ID, myIDBytes[i]) {
+				if entry.ID == myID {
 					r2ForMe = append(r2ForMe, MapEntry{
-						ID:    senderIDBytes,
+						ID:    parties[senderIdx].id,
 						Value: entry.Value,
 					})
 				}
@@ -120,7 +107,7 @@ func runSign(t *testing.T, keyPackages [][]byte, pubKeyPackage []byte, signerInd
 	type signerState struct {
 		idx    int
 		id     uint16
-		nonces Handle
+		nonces NoncesHandle
 		commit []byte
 	}
 
@@ -137,7 +124,7 @@ func runSign(t *testing.T, keyPackages [][]byte, pubKeyPackage []byte, signerInd
 	var commitEntries []MapEntry
 	for _, s := range signers {
 		commitEntries = append(commitEntries, MapEntry{
-			ID:    mustEncodeID(t, s.id),
+			ID:    s.id,
 			Value: s.commit,
 		})
 	}
@@ -154,7 +141,7 @@ func runSign(t *testing.T, keyPackages [][]byte, pubKeyPackage []byte, signerInd
 			t.Fatalf("Sign signer %d: %v", s.id, signErr)
 		}
 		shareEntries = append(shareEntries, MapEntry{
-			ID:    mustEncodeID(t, s.id),
+			ID:    s.id,
 			Value: share,
 		})
 	}
@@ -210,7 +197,7 @@ func runReshare(t *testing.T, oldKPs [][]byte, oldPKP []byte, newN, newT uint16,
 
 	type party struct {
 		id     uint16
-		secret Handle
+		secret DkgSecretHandle
 		r1Pkg  []byte
 	}
 
@@ -229,7 +216,7 @@ func runReshare(t *testing.T, oldKPs [][]byte, oldPKP []byte, newN, newT uint16,
 	}
 
 	type r2Result struct {
-		secret Handle
+		secret DkgSecretHandle
 		r2Pkgs []MapEntry
 	}
 	r2Results := make([]r2Result, newN)
@@ -241,7 +228,7 @@ func runReshare(t *testing.T, oldKPs [][]byte, oldPKP []byte, newN, newT uint16,
 				continue
 			}
 			others = append(others, MapEntry{
-				ID:    mustEncodeID(t, parties[j].id),
+				ID:    parties[j].id,
 				Value: parties[j].r1Pkg,
 			})
 		}
@@ -259,19 +246,16 @@ func runReshare(t *testing.T, oldKPs [][]byte, oldPKP []byte, newN, newT uint16,
 	}
 
 	keyPackages = make([][]byte, newN)
-	myIDBytes := make([][]byte, newN)
-	for i := uint16(0); i < newN; i++ {
-		myIDBytes[i] = mustEncodeID(t, i+1)
-	}
 
 	for i := uint16(0); i < newN; i++ {
+		myID := i + 1
 		var r1Others []MapEntry
 		for j := uint16(0); j < newN; j++ {
 			if j == i {
 				continue
 			}
 			r1Others = append(r1Others, MapEntry{
-				ID:    mustEncodeID(t, parties[j].id),
+				ID:    parties[j].id,
 				Value: parties[j].r1Pkg,
 			})
 		}
@@ -281,11 +265,10 @@ func runReshare(t *testing.T, oldKPs [][]byte, oldPKP []byte, newN, newT uint16,
 			if senderIdx == i {
 				continue
 			}
-			senderIDBytes := mustEncodeID(t, parties[senderIdx].id)
 			for _, entry := range r2Results[senderIdx].r2Pkgs {
-				if bytes.Equal(entry.ID, myIDBytes[i]) {
+				if entry.ID == myID {
 					r2ForMe = append(r2ForMe, MapEntry{
-						ID:    senderIDBytes,
+						ID:    parties[senderIdx].id,
 						Value: entry.Value,
 					})
 				}
@@ -319,31 +302,44 @@ func containsU16(slice []uint16, val uint16) bool {
 	return false
 }
 
-func runKeyImport(t *testing.T, n, threshold uint16, spendingKey, expectedVK []byte) (keyPackages [][]byte, pubKeyPackage []byte) {
+type keyImportResult struct {
+	keyPackages   [][]byte
+	pubKeyPackage []byte
+	vk            []byte
+	extras        []byte
+}
+
+func runKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIndex uint32) keyImportResult {
 	t.Helper()
 
 	type party struct {
 		id     uint16
-		secret Handle
+		secret DkgSecretHandle
 		r1Pkg  []byte
 	}
 
 	parties := make([]party, n)
+	var vk []byte
+	var extras []byte
 	for i := uint16(0); i < n; i++ {
 		id := i + 1
-		var sk []byte
+		var s []byte
 		if id == 1 {
-			sk = spendingKey
+			s = seed
 		}
-		secret, pkg, err := KeyImportPart1(id, n, threshold, sk)
+		secret, pkg, outVK, outExtras, err := KeyImportPart1(id, n, threshold, s, accountIndex)
 		if err != nil {
 			t.Fatalf("KeyImportPart1 party %d: %v", id, err)
+		}
+		if id == 1 {
+			vk = outVK
+			extras = outExtras
 		}
 		parties[i] = party{id: id, secret: secret, r1Pkg: pkg}
 	}
 
 	type r2Result struct {
-		secret Handle
+		secret DkgSecretHandle
 		r2Pkgs []MapEntry
 	}
 	r2Results := make([]r2Result, n)
@@ -355,7 +351,7 @@ func runKeyImport(t *testing.T, n, threshold uint16, spendingKey, expectedVK []b
 				continue
 			}
 			others = append(others, MapEntry{
-				ID:    mustEncodeID(t, parties[j].id),
+				ID:    parties[j].id,
 				Value: parties[j].r1Pkg,
 			})
 		}
@@ -372,20 +368,18 @@ func runKeyImport(t *testing.T, n, threshold uint16, spendingKey, expectedVK []b
 		r2Results[i] = r2Result{secret: secret, r2Pkgs: entries}
 	}
 
-	keyPackages = make([][]byte, n)
-	myIDBytes := make([][]byte, n)
-	for i := uint16(0); i < n; i++ {
-		myIDBytes[i] = mustEncodeID(t, i+1)
-	}
+	kps := make([][]byte, n)
 
+	var pkp []byte
 	for i := uint16(0); i < n; i++ {
+		myID := i + 1
 		var r1Others []MapEntry
 		for j := uint16(0); j < n; j++ {
 			if j == i {
 				continue
 			}
 			r1Others = append(r1Others, MapEntry{
-				ID:    mustEncodeID(t, parties[j].id),
+				ID:    parties[j].id,
 				Value: parties[j].r1Pkg,
 			})
 		}
@@ -395,33 +389,32 @@ func runKeyImport(t *testing.T, n, threshold uint16, spendingKey, expectedVK []b
 			if senderIdx == i {
 				continue
 			}
-			senderIDBytes := mustEncodeID(t, parties[senderIdx].id)
 			for _, entry := range r2Results[senderIdx].r2Pkgs {
-				if bytes.Equal(entry.ID, myIDBytes[i]) {
+				if entry.ID == myID {
 					r2ForMe = append(r2ForMe, MapEntry{
-						ID:    senderIDBytes,
+						ID:    parties[senderIdx].id,
 						Value: entry.Value,
 					})
 				}
 			}
 		}
 
-		kp, pkp, err := KeyImportPart3(
+		kp, p, err := KeyImportPart3(
 			r2Results[i].secret,
 			EncodeMap(r1Others),
 			EncodeMap(r2ForMe),
-			expectedVK,
+			vk,
 		)
 		if err != nil {
 			t.Fatalf("KeyImportPart3 party %d: %v", i+1, err)
 		}
-		keyPackages[i] = kp
+		kps[i] = kp
 		if i == 0 {
-			pubKeyPackage = pkp
+			pkp = p
 		}
 	}
 
-	return keyPackages, pubKeyPackage
+	return keyImportResult{keyPackages: kps, pubKeyPackage: pkp, vk: vk, extras: extras}
 }
 
 func TestKeyImport(t *testing.T) {
@@ -430,56 +423,37 @@ func TestKeyImport(t *testing.T) {
 		seed[i] = 0xAB
 	}
 
-	t.Log("=== Derive spending key ===")
-	sk, err := DeriveSpendingKeyFromSeed(seed, 0)
-	if err != nil {
-		t.Fatalf("DeriveSpendingKeyFromSeed: %v", err)
-	}
-	t.Logf("spending key: %x (%d bytes)", sk, len(sk))
-
-	vk, err := SpendingKeyToVerifyingKey(sk)
-	if err != nil {
-		t.Fatalf("SpendingKeyToVerifyingKey: %v", err)
-	}
-	t.Logf("verifying key: %x (%d bytes)", vk, len(vk))
-
 	t.Log("=== Key Import 2-of-3 ===")
-	kps, pkp := runKeyImport(t, 3, 2, sk, vk)
+	result := runKeyImport(t, 3, 2, seed, 0)
 
-	importedVK, err := PubKeyPackageVerifyingKey(pkp)
+	importedVK, err := PubKeyPackageVerifyingKey(result.pubKeyPackage)
 	if err != nil {
 		t.Fatalf("PubKeyPackageVerifyingKey: %v", err)
 	}
-	if !bytes.Equal(vk, importedVK) {
+	if !bytes.Equal(result.vk, importedVK) {
 		t.Fatal("verifying key mismatch after import")
+	}
+	if len(result.extras) != 96 {
+		t.Fatalf("expected 96 bytes sapling extras, got %d", len(result.extras))
 	}
 
 	t.Log("=== Sign (parties 0,1) ===")
 	msg := []byte("hello zcash key import")
-	runSign(t, kps, pkp, []int{0, 1}, msg)
+	runSign(t, result.keyPackages, result.pubKeyPackage, []int{0, 1}, msg)
 
 	t.Log("=== Sign (parties 1,2) ===")
-	runSign(t, kps, pkp, []int{1, 2}, msg)
-
-	t.Log("=== Derive sapling extras from seed ===")
-	extras, err := DeriveSaplingExtrasFromSeed(seed, 0)
-	if err != nil {
-		t.Fatalf("DeriveSaplingExtrasFromSeed: %v", err)
-	}
-	if len(extras) != 96 {
-		t.Fatalf("expected 96 bytes sapling extras, got %d", len(extras))
-	}
+	runSign(t, result.keyPackages, result.pubKeyPackage, []int{1, 2}, msg)
 
 	t.Log("=== Derive z-address from extras ===")
-	zAddr, err := SaplingDeriveAddress(pkp, extras)
+	keys, err := SaplingDeriveKeys(result.pubKeyPackage, result.extras)
 	if err != nil {
-		t.Fatalf("SaplingDeriveAddress: %v", err)
+		t.Fatalf("SaplingDeriveKeys: %v", err)
 	}
 	expectedAddr := "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s"
-	if zAddr != expectedAddr {
-		t.Fatalf("z-address mismatch:\n  got:  %s\n  want: %s", zAddr, expectedAddr)
+	if keys.Address != expectedAddr {
+		t.Fatalf("z-address mismatch:\n  got:  %s\n  want: %s", keys.Address, expectedAddr)
 	}
-	t.Logf("z-address: %s", zAddr)
+	t.Logf("z-address: %s", keys.Address)
 
 	t.Log("=== All key import operations successful ===")
 }
@@ -546,15 +520,21 @@ func TestSaplingExtras(t *testing.T) {
 		t.Fatalf("expected 96 bytes, got %d", len(extras))
 	}
 
-	t.Log("=== Derive address from extras ===")
-	addr, err := SaplingDeriveAddress(pubKeyPackage, extras)
+	t.Log("=== Derive keys from extras ===")
+	keys, err := SaplingDeriveKeys(pubKeyPackage, extras)
 	if err != nil {
-		t.Fatalf("SaplingDeriveAddress: %v", err)
+		t.Fatalf("SaplingDeriveKeys: %v", err)
 	}
-	if len(addr) < 3 || addr[:2] != "zs" {
-		t.Fatalf("expected zs... address, got: %s", addr)
+	if len(keys.Address) < 3 || keys.Address[:2] != "zs" {
+		t.Fatalf("expected zs... address, got: %s", keys.Address)
 	}
-	t.Logf("z-address: %s", addr)
+	if len(keys.Ivk) != 32 {
+		t.Fatalf("expected 32 bytes ivk, got %d", len(keys.Ivk))
+	}
+	if len(keys.Nk) != 32 {
+		t.Fatalf("expected 32 bytes nk, got %d", len(keys.Nk))
+	}
+	t.Logf("z-address: %s", keys.Address)
 
 	t.Log("=== All sapling extras operations successful ===")
 }
@@ -562,13 +542,205 @@ func TestSaplingExtras(t *testing.T) {
 func TestRejectOutOfRangeAccountIndex(t *testing.T) {
 	seed := make([]byte, 64)
 
-	_, err := DeriveSpendingKeyFromSeed(seed, 1<<31)
+	_, _, _, _, err := KeyImportPart1(1, 3, 2, seed, 1<<31)
 	if err == nil {
-		t.Fatal("expected DeriveSpendingKeyFromSeed to reject out-of-range account index")
+		t.Fatal("expected KeyImportPart1 to reject out-of-range account index")
+	}
+}
+
+func TestSaplingDeriveKeysCombined(t *testing.T) {
+	_, pubKeyPackage := runDKG(t, 3, 2)
+
+	extras, err := SaplingGenerateExtras()
+	if err != nil {
+		t.Fatalf("SaplingGenerateExtras: %v", err)
 	}
 
-	_, err = DeriveSaplingExtrasFromSeed(seed, 1<<31)
+	keys, err := SaplingDeriveKeys(pubKeyPackage, extras)
+	if err != nil {
+		t.Fatalf("SaplingDeriveKeys: %v", err)
+	}
+
+	if len(keys.Address) < 3 || keys.Address[:2] != "zs" {
+		t.Fatalf("expected zs... address, got: %s", keys.Address)
+	}
+	if len(keys.Ivk) != 32 {
+		t.Fatalf("expected 32 bytes ivk, got %d", len(keys.Ivk))
+	}
+	if len(keys.Nk) != 32 {
+		t.Fatalf("expected 32 bytes nk, got %d", len(keys.Nk))
+	}
+
+	t.Run("DeriveKeysDeterministic", func(t *testing.T) {
+		seed := make([]byte, 64)
+		for i := range seed {
+			seed[i] = 0xAB
+		}
+		result1 := runKeyImport(t, 3, 2, seed, 0)
+		result2 := runKeyImport(t, 3, 2, seed, 0)
+		if !bytes.Equal(result1.extras, result2.extras) {
+			t.Fatal("seed-derived extras should be deterministic")
+		}
+	})
+}
+
+func TestTreeAndWitness(t *testing.T) {
+	emptyTreeHex := []byte("000000")
+	tree, err := SaplingTreeFromState(emptyTreeHex)
+	if err != nil {
+		t.Fatalf("SaplingTreeFromState: %v", err)
+	}
+	defer tree.Close()
+
+	cmu1 := make([]byte, 32)
+	cmu1[0] = 1
+
+	err = SaplingTreeAppend(tree, cmu1)
+	if err != nil {
+		t.Fatalf("SaplingTreeAppend cmu1: %v", err)
+	}
+
+	witness, err := SaplingTreeWitness(tree)
+	if err != nil {
+		t.Fatalf("SaplingTreeWitness: %v", err)
+	}
+	defer witness.Close()
+
+	cmu2 := make([]byte, 32)
+	cmu2[0] = 2
+
+	err = SaplingTreeAppend(tree, cmu2)
+	if err != nil {
+		t.Fatalf("SaplingTreeAppend cmu2: %v", err)
+	}
+
+	err = SaplingWitnessAppend(witness, cmu2)
+	if err != nil {
+		t.Fatalf("SaplingWitnessAppend: %v", err)
+	}
+
+	root, err := SaplingWitnessRoot(witness)
+	if err != nil {
+		t.Fatalf("SaplingWitnessRoot: %v", err)
+	}
+	if len(root) != 32 {
+		t.Fatalf("expected 32 bytes root, got %d", len(root))
+	}
+
+	serialized, err := SaplingWitnessSerialize(witness)
+	if err != nil {
+		t.Fatalf("SaplingWitnessSerialize: %v", err)
+	}
+	if len(serialized) == 0 {
+		t.Fatal("serialized witness should not be empty")
+	}
+
+	witness2, err := SaplingWitnessDeserialize(serialized)
+	if err != nil {
+		t.Fatalf("SaplingWitnessDeserialize: %v", err)
+	}
+	defer witness2.Close()
+
+	root2, err := SaplingWitnessRoot(witness2)
+	if err != nil {
+		t.Fatalf("SaplingWitnessRoot (deserialized): %v", err)
+	}
+	if !bytes.Equal(root, root2) {
+		t.Fatal("witness root mismatch after serialize/deserialize roundtrip")
+	}
+	t.Logf("witness root: %x", root)
+}
+
+func TestTreeMultipleAppends(t *testing.T) {
+	tree, err := SaplingTreeFromState([]byte("000000"))
+	if err != nil {
+		t.Fatalf("SaplingTreeFromState: %v", err)
+	}
+	defer tree.Close()
+
+	for i := byte(1); i <= 10; i++ {
+		cmu := make([]byte, 32)
+		cmu[0] = i
+		appendErr := SaplingTreeAppend(tree, cmu)
+		if appendErr != nil {
+			t.Fatalf("SaplingTreeAppend %d: %v", i, appendErr)
+		}
+	}
+
+	witness, err := SaplingTreeWitness(tree)
+	if err != nil {
+		t.Fatalf("SaplingTreeWitness: %v", err)
+	}
+	defer witness.Close()
+
+	root, err := SaplingWitnessRoot(witness)
+	if err != nil {
+		t.Fatalf("SaplingWitnessRoot: %v", err)
+	}
+	if len(root) != 32 {
+		t.Fatalf("expected 32 bytes root, got %d", len(root))
+	}
+
+	for i := byte(11); i <= 15; i++ {
+		cmu := make([]byte, 32)
+		cmu[0] = i
+		appendErr := SaplingWitnessAppend(witness, cmu)
+		if appendErr != nil {
+			t.Fatalf("SaplingWitnessAppend %d: %v", i, appendErr)
+		}
+	}
+
+	rootAfter, err := SaplingWitnessRoot(witness)
+	if err != nil {
+		t.Fatalf("SaplingWitnessRoot after appends: %v", err)
+	}
+	if bytes.Equal(root, rootAfter) {
+		t.Fatal("root should change after appending more nodes")
+	}
+}
+
+func TestTxBuilder(t *testing.T) {
+	seed := make([]byte, 64)
+	for i := range seed {
+		seed[i] = 0xAB
+	}
+
+	result := runKeyImport(t, 3, 2, seed, 0)
+
+	builder, err := TxBuilderNew(result.pubKeyPackage, result.extras, 2_000_000)
+	if err != nil {
+		t.Fatalf("TxBuilderNew: %v", err)
+	}
+	defer builder.Close()
+
+	addr := "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s"
+	err = TxBuilderAddOutput(builder, addr, 100000)
+	if err != nil {
+		t.Fatalf("TxBuilderAddOutput: %v", err)
+	}
+	t.Log("TxBuilderNew + AddOutput succeeded")
+}
+
+func TestHandleClose(t *testing.T) {
+	tree, err := SaplingTreeFromState([]byte("000000"))
+	if err != nil {
+		t.Fatalf("SaplingTreeFromState: %v", err)
+	}
+
+	cmu := make([]byte, 32)
+	cmu[0] = 1
+	err = SaplingTreeAppend(tree, cmu)
+	if err != nil {
+		t.Fatalf("SaplingTreeAppend: %v", err)
+	}
+
+	err = tree.Close()
+	if err != nil {
+		t.Fatalf("tree.Close: %v", err)
+	}
+
+	err = tree.Close()
 	if err == nil {
-		t.Fatal("expected DeriveSaplingExtrasFromSeed to reject out-of-range account index")
+		t.Fatal("double Close should return error")
 	}
 }

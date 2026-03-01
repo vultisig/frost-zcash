@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	frozt "github.com/vultisig/frozt-zcash/go-frozt"
+	"github.com/vultisig/frozt-zcash/poc-frozt/internal/relay"
 )
 
 type ReshareResult struct {
@@ -16,7 +17,7 @@ type ReshareResult struct {
 
 func RunReshare(
 	ctx context.Context,
-	client *RelayClient,
+	client *relay.RelayClient,
 	sessionID, partyID string,
 	identifier, maxSigners, minSigners uint16,
 	oldKeyPackage []byte,
@@ -38,8 +39,8 @@ func RunReshare(
 		return nil, fmt.Errorf("marshal round1 msg: %w", err)
 	}
 
-	recipients := otherParties(allParties, partyID)
-	err = client.SendMessage(ctx, sessionID, "reshare-round1", Message{
+	recipients := OtherParties(allParties, partyID)
+	err = client.SendMessage(ctx, sessionID, "reshare-round1", relay.Message{
 		SessionID: sessionID,
 		From:      partyID,
 		To:        recipients,

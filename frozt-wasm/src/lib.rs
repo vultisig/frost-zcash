@@ -5,6 +5,8 @@ mod keyshare;
 mod reshare;
 mod sapling;
 mod sign;
+mod tree;
+mod tx;
 
 use reddsa::frost::redjubjub::JubjubBlake2b512;
 

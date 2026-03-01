@@ -50,7 +50,7 @@ pub(crate) fn decode_r2_map(
     )
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_dkg_part1(
     identifier: u16,
     max_signers: u16,
@@ -82,7 +82,7 @@ pub extern "C" fn frozt_dkg_part1(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_dkg_part2(
     secret: Handle,
     round1_packages: Option<&go_slice>,
@@ -109,7 +109,7 @@ pub extern "C" fn frozt_dkg_part2(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_dkg_part3(
     secret: Handle,
     round1_packages: Option<&go_slice>,

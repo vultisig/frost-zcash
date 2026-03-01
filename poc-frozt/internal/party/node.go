@@ -8,35 +8,58 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vultisig/frozt-zcash/go-frozt/orchestration"
+	"github.com/vultisig/frozt-zcash/poc-frozt/internal/relay"
 	"github.com/vultisig/frozt-zcash/poc-frozt/internal/store"
 )
 
 type Config struct {
-	RelayURL    string
-	PartyID     string
-	Identifier  uint16
-	SessionID   string
-	Parties     []string
-	MaxSigners  uint16
-	MinSigners  uint16
-	Operation   string
-	KeystoreDir string
-	SignMessage  string
-	Signers     []string
+	RelayURL              string
+	PartyID               string
+	Identifier            uint16
+	SessionID             string
+	Parties               []string
+	MaxSigners            uint16
+	MinSigners            uint16
+	Operation             string
+	KeystoreDir           string
+	KeystorePassphrase    string
+	SignMessage            string
+	Signers               []string
+	EncryptionKeyHex      string
+	Mnemonic              string
+	ExpectedAddress       string
+	LightwalletdEndpoint  string
+	RecipientAddress      string
+	SendAmount            uint64
+	Birthday              uint64
 }
 
 type Node struct {
 	Config   Config
-	Client   *orchestration.RelayClient
+	Client   *relay.RelayClient
 	Keystore *store.Keystore
 }
 
 func NewNode(cfg Config) *Node {
+	var client *relay.RelayClient
+	if cfg.EncryptionKeyHex != "" {
+		client = relay.NewRelayClientWithEncryption(cfg.RelayURL, cfg.EncryptionKeyHex)
+	} else {
+		client = relay.NewRelayClient(cfg.RelayURL)
+	}
+	var ks *store.Keystore
+	if cfg.KeystorePassphrase != "" {
+		ks = store.NewKeystoreEncrypted(cfg.KeystoreDir, cfg.KeystorePassphrase)
+	} else {
+		ks = store.NewKeystore(cfg.KeystoreDir)
+	}
+
+	client.PartyID = cfg.PartyID
+
 	return &Node{
 		Config:   cfg,
-		Client:   orchestration.NewRelayClient(cfg.RelayURL),
-		Keystore: store.NewKeystore(cfg.KeystoreDir),
+		Client:   client,
+		Keystore: ks,
 	}
 }
 
@@ -67,6 +90,10 @@ func (n *Node) Run(ctx context.Context) error {
 		return n.runKeygen(ctx)
 	case "sign":
 		return n.runSign(ctx)
+	case "key-import":
+		return n.runKeyImport(ctx)
+	case "spend":
+		return n.runSpend(ctx)
 	default:
 		return fmt.Errorf("unknown operation: %s", n.Config.Operation)
 	}

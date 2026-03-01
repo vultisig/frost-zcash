@@ -73,11 +73,15 @@ pub fn wasm_encode_map(entries: JsValue) -> Result<Vec<u8>, JsError> {
     buf.extend_from_slice(&(len as u32).to_le_bytes());
     for i in 0..len {
         let entry = arr.get(i);
-        let id = js_sys::Reflect::get(&entry, &"id".into())
+        let id_val = js_sys::Reflect::get(&entry, &"id".into())
             .map_err(|e| JsError::new(&format!("{:?}", e)))?;
         let value = js_sys::Reflect::get(&entry, &"value".into())
             .map_err(|e| JsError::new(&format!("{:?}", e)))?;
-        let id_bytes = js_sys::Uint8Array::from(id).to_vec();
+        let id_u16 = id_val.as_f64()
+            .ok_or_else(|| JsError::new("id must be a number"))? as u16;
+        let ident = crate::Identifier::try_from(id_u16)
+            .map_err(|e| JsError::new(&format!("{:?}", e)))?;
+        let id_bytes = ident.serialize();
         let val_bytes = js_sys::Uint8Array::from(value).to_vec();
         buf.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
         buf.extend_from_slice(&id_bytes);
@@ -99,6 +103,9 @@ pub fn wasm_decode_map(data: &[u8]) -> Result<JsValue, JsError> {
         }
         let key = &data[pos..pos + klen];
         pos += klen;
+        let ident = crate::Identifier::deserialize(key)
+            .map_err(|e| JsError::new(&format!("{:?}", e)))?;
+        let id_u16 = crate::keyshare::identifier_to_u16(&ident)?;
         let vlen = read_u32(data, &mut pos)? as usize;
         if pos + vlen > data.len() {
             return Err(JsError::new("decode_map: buffer underflow"));
@@ -109,7 +116,7 @@ pub fn wasm_decode_map(data: &[u8]) -> Result<JsValue, JsError> {
         js_sys::Reflect::set(
             &obj,
             &"id".into(),
-            &js_sys::Uint8Array::from(key),
+            &JsValue::from(id_u16),
         )
         .unwrap();
         js_sys::Reflect::set(

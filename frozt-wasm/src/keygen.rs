@@ -103,7 +103,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::keyshare::identifier_to_u16;
 
-    fn encode_id_map(entries: &[(u16, Vec<u8>)]) -> Vec<u8> {
+    pub(crate) fn encode_id_map_native(entries: &[(u16, Vec<u8>)]) -> Vec<u8> {
         let mut buf = Vec::new();
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (id, v) in entries {
@@ -164,7 +164,7 @@ pub(crate) mod tests {
                 .map(|(_, (id, pkg))| (*id, pkg.clone()))
                 .collect();
 
-            let r1_map = encode_id_map(&others);
+            let r1_map = encode_id_map_native(&others);
 
             let secret_pkg =
                 dkg::round1::SecretPackage::<J>::deserialize(&secrets1[i]).unwrap();
@@ -203,8 +203,8 @@ pub(crate) mod tests {
                 }
             }
 
-            let r1_map = encode_id_map(&r1_others);
-            let r2_map = encode_id_map(&r2_for_me);
+            let r1_map = encode_id_map_native(&r1_others);
+            let r2_map = encode_id_map_native(&r2_for_me);
 
             let secret_pkg =
                 dkg::round2::SecretPackage::<J>::deserialize(&secrets2[i]).unwrap();

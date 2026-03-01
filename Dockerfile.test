@@ -17,8 +17,10 @@ WORKDIR /build
 COPY go-frozt/ go-frozt/
 
 COPY --from=rust-builder /build/frozt-lib/include/frozt-lib.h go-frozt/includes/
-RUN mkdir -p go-frozt/includes/linux && \
-    cp /usr/lib/libfroztlib.so go-frozt/includes/linux/
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then LIBDIR=linux-amd64; else LIBDIR=linux-arm64; fi && \
+    mkdir -p go-frozt/includes/$LIBDIR && \
+    cp /usr/lib/libfroztlib.so go-frozt/includes/$LIBDIR/
 
 WORKDIR /build/go-frozt
 RUN CGO_ENABLED=1 go test -v -count=1 ./...

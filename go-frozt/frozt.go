@@ -13,10 +13,27 @@ import (
 
 type Handle int32
 
+type DkgSecretHandle Handle
+type NoncesHandle Handle
+type TreeHandle Handle
+type WitnessHandle Handle
+type TxBuilderHandle Handle
+
+func (h DkgSecretHandle) Close() error { return HandleFree(Handle(h)) }
+func (h NoncesHandle) Close() error    { return HandleFree(Handle(h)) }
+func (h TreeHandle) Close() error      { return HandleFree(Handle(h)) }
+func (h WitnessHandle) Close() error   { return HandleFree(Handle(h)) }
+func (h TxBuilderHandle) Close() error { return HandleFree(Handle(h)) }
+
 func cHandle(h Handle) C.Handle {
 	return C.Handle{_0: C.int32_t(h)}
 }
 
+// cGoSlice reinterprets a Go []byte as a C go_slice pointer.
+// This relies on Go's slice header layout (pointer, len, cap) matching
+// the C go_slice struct { ptr, len, cap }. The caller must Pin the slice
+// data via runtime.Pinner before passing it across the FFI boundary so
+// the GC does not relocate the backing array during the C call.
 func cGoSlice(data []byte, pinner *runtime.Pinner) *C.go_slice {
 	if data == nil || len(data) == 0 {
 		return nil
@@ -42,7 +59,7 @@ func HandleFree(h Handle) error {
 
 // DKG
 
-func DkgPart1(identifier, maxSigners, minSigners uint16) (Handle, []byte, error) {
+func DkgPart1(identifier, maxSigners, minSigners uint16) (DkgSecretHandle, []byte, error) {
 	var outSecret C.Handle
 	var outPackage C.tss_buffer
 	defer C.tss_buffer_free(&outPackage)
@@ -58,10 +75,10 @@ func DkgPart1(identifier, maxSigners, minSigners uint16) (Handle, []byte, error)
 		return 0, nil, mapLibError(int(res))
 	}
 
-	return Handle(outSecret._0), copyBuffer(&outPackage), nil
+	return DkgSecretHandle(outSecret._0), copyBuffer(&outPackage), nil
 }
 
-func DkgPart2(secret Handle, round1Packages []byte) (Handle, []byte, error) {
+func DkgPart2(secret DkgSecretHandle, round1Packages []byte) (DkgSecretHandle, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -72,7 +89,7 @@ func DkgPart2(secret Handle, round1Packages []byte) (Handle, []byte, error) {
 	defer C.tss_buffer_free(&outPackages)
 
 	res := C.frozt_dkg_part2(
-		cHandle(secret),
+		cHandle(Handle(secret)),
 		r1,
 		&outSecret,
 		&outPackages,
@@ -81,10 +98,10 @@ func DkgPart2(secret Handle, round1Packages []byte) (Handle, []byte, error) {
 		return 0, nil, mapLibError(int(res))
 	}
 
-	return Handle(outSecret._0), copyBuffer(&outPackages), nil
+	return DkgSecretHandle(outSecret._0), copyBuffer(&outPackages), nil
 }
 
-func DkgPart3(secret Handle, round1Packages, round2Packages []byte) ([]byte, []byte, error) {
+func DkgPart3(secret DkgSecretHandle, round1Packages, round2Packages []byte) ([]byte, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -97,7 +114,7 @@ func DkgPart3(secret Handle, round1Packages, round2Packages []byte) ([]byte, []b
 	defer C.tss_buffer_free(&outPKP)
 
 	res := C.frozt_dkg_part3(
-		cHandle(secret),
+		cHandle(Handle(secret)),
 		r1,
 		r2,
 		&outKP,
@@ -112,7 +129,7 @@ func DkgPart3(secret Handle, round1Packages, round2Packages []byte) ([]byte, []b
 
 // Reshare
 
-func ResharePart1(identifier, maxSigners, minSigners uint16, oldKeyPackage []byte, oldIdentifiers []uint16) (Handle, []byte, error) {
+func ResharePart1(identifier, maxSigners, minSigners uint16, oldKeyPackage []byte, oldIdentifiers []uint16) (DkgSecretHandle, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -145,10 +162,10 @@ func ResharePart1(identifier, maxSigners, minSigners uint16, oldKeyPackage []byt
 		return 0, nil, mapLibError(int(res))
 	}
 
-	return Handle(outSecret._0), copyBuffer(&outPackage), nil
+	return DkgSecretHandle(outSecret._0), copyBuffer(&outPackage), nil
 }
 
-func ResharePart3(secret Handle, round1Packages, round2Packages, expectedVerifyingKey []byte) ([]byte, []byte, error) {
+func ResharePart3(secret DkgSecretHandle, round1Packages, round2Packages, expectedVerifyingKey []byte) ([]byte, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -162,7 +179,7 @@ func ResharePart3(secret Handle, round1Packages, round2Packages, expectedVerifyi
 	defer C.tss_buffer_free(&outPKP)
 
 	res := C.frozt_reshare_part3(
-		cHandle(secret),
+		cHandle(Handle(secret)),
 		r1,
 		r2,
 		vk,
@@ -178,7 +195,7 @@ func ResharePart3(secret Handle, round1Packages, round2Packages, expectedVerifyi
 
 // Signing
 
-func SignCommit(keyPackage []byte) (Handle, []byte, error) {
+func SignCommit(keyPackage []byte) (NoncesHandle, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -193,7 +210,7 @@ func SignCommit(keyPackage []byte) (Handle, []byte, error) {
 		return 0, nil, mapLibError(int(res))
 	}
 
-	return Handle(outNonces._0), copyBuffer(&outCommitments), nil
+	return NoncesHandle(outNonces._0), copyBuffer(&outCommitments), nil
 }
 
 func SignNewPackage(message, commitmentsMap, pubKeyPackage []byte) ([]byte, []byte, error) {
@@ -217,7 +234,7 @@ func SignNewPackage(message, commitmentsMap, pubKeyPackage []byte) ([]byte, []by
 	return copyBuffer(&outSP), copyBuffer(&outRandomizer), nil
 }
 
-func Sign(signingPackage []byte, nonces Handle, keyPackage, randomizer []byte) ([]byte, error) {
+func Sign(signingPackage []byte, nonces NoncesHandle, keyPackage, randomizer []byte) ([]byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -228,7 +245,7 @@ func Sign(signingPackage []byte, nonces Handle, keyPackage, randomizer []byte) (
 	var outShare C.tss_buffer
 	defer C.tss_buffer_free(&outShare)
 
-	res := C.frozt_sign(sp, cHandle(nonces), kp, r, &outShare)
+	res := C.frozt_sign(sp, cHandle(Handle(nonces)), kp, r, &outShare)
 	if res != 0 {
 		return nil, mapLibError(int(res))
 	}
@@ -256,9 +273,7 @@ func SignAggregate(signingPackage, sharesMap, pubKeyPackage, randomizer []byte) 
 	return copyBuffer(&outSig), nil
 }
 
-// Identifier encoding
-
-func EncodeIdentifier(id uint16) ([]byte, error) {
+func encodeIdentifier(id uint16) ([]byte, error) {
 	var outBytes C.tss_buffer
 	defer C.tss_buffer_free(&outBytes)
 
@@ -270,7 +285,7 @@ func EncodeIdentifier(id uint16) ([]byte, error) {
 	return copyBuffer(&outBytes), nil
 }
 
-func DecodeIdentifier(idBytes []byte) (uint16, error) {
+func decodeIdentifier(idBytes []byte) (uint16, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -323,66 +338,39 @@ func PubKeyPackageVerifyingKey(pubKeyPackage []byte) ([]byte, error) {
 
 // Key Import
 
-func DeriveSpendingKeyFromSeed(seed []byte, accountIndex uint32) ([]byte, error) {
+func KeyImportPart1(identifier, maxSigners, minSigners uint16, seed []byte, accountIndex uint32) (DkgSecretHandle, []byte, []byte, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
 	s := cGoSlice(seed, pinner)
 
-	var outSK C.tss_buffer
-	defer C.tss_buffer_free(&outSK)
-
-	res := C.frozt_derive_spending_key_from_seed(s, C.uint32_t(accountIndex), &outSK)
-	if res != 0 {
-		return nil, mapLibError(int(res))
-	}
-
-	return copyBuffer(&outSK), nil
-}
-
-func SpendingKeyToVerifyingKey(spendingKey []byte) ([]byte, error) {
-	pinner := new(runtime.Pinner)
-	defer pinner.Unpin()
-
-	sk := cGoSlice(spendingKey, pinner)
-
-	var outVK C.tss_buffer
-	defer C.tss_buffer_free(&outVK)
-
-	res := C.frozt_spending_key_to_verifying_key(sk, &outVK)
-	if res != 0 {
-		return nil, mapLibError(int(res))
-	}
-
-	return copyBuffer(&outVK), nil
-}
-
-func KeyImportPart1(identifier, maxSigners, minSigners uint16, spendingKey []byte) (Handle, []byte, error) {
-	pinner := new(runtime.Pinner)
-	defer pinner.Unpin()
-
-	sk := cGoSlice(spendingKey, pinner)
-
 	var outSecret C.Handle
 	var outPackage C.tss_buffer
+	var outVK C.tss_buffer
+	var outExtras C.tss_buffer
 	defer C.tss_buffer_free(&outPackage)
+	defer C.tss_buffer_free(&outVK)
+	defer C.tss_buffer_free(&outExtras)
 
 	res := C.frozt_key_import_part1(
 		C.uint16_t(identifier),
 		C.uint16_t(maxSigners),
 		C.uint16_t(minSigners),
-		sk,
+		s,
+		C.uint32_t(accountIndex),
 		&outSecret,
 		&outPackage,
+		&outVK,
+		&outExtras,
 	)
 	if res != 0 {
-		return 0, nil, mapLibError(int(res))
+		return 0, nil, nil, nil, mapLibError(int(res))
 	}
 
-	return Handle(outSecret._0), copyBuffer(&outPackage), nil
+	return DkgSecretHandle(outSecret._0), copyBuffer(&outPackage), copyBuffer(&outVK), copyBuffer(&outExtras), nil
 }
 
-func KeyImportPart3(secret Handle, round1Packages, round2Packages, expectedVK []byte) ([]byte, []byte, error) {
+func KeyImportPart3(secret DkgSecretHandle, round1Packages, round2Packages, expectedVK []byte) ([]byte, []byte, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -396,7 +384,7 @@ func KeyImportPart3(secret Handle, round1Packages, round2Packages, expectedVK []
 	defer C.tss_buffer_free(&outPKP)
 
 	res := C.frozt_key_import_part3(
-		cHandle(secret),
+		cHandle(Handle(secret)),
 		r1,
 		r2,
 		vk,
@@ -424,7 +412,13 @@ func SaplingGenerateExtras() ([]byte, error) {
 	return copyBuffer(&outExtras), nil
 }
 
-func SaplingDeriveAddress(pubKeyPackage, saplingExtras []byte) (string, error) {
+type SaplingKeys struct {
+	Address string
+	Ivk     []byte
+	Nk      []byte
+}
+
+func SaplingDeriveKeys(pubKeyPackage, saplingExtras []byte) (*SaplingKeys, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -432,29 +426,275 @@ func SaplingDeriveAddress(pubKeyPackage, saplingExtras []byte) (string, error) {
 	extras := cGoSlice(saplingExtras, pinner)
 
 	var outAddr C.tss_buffer
+	var outIvk C.tss_buffer
+	var outNk C.tss_buffer
 	defer C.tss_buffer_free(&outAddr)
+	defer C.tss_buffer_free(&outIvk)
+	defer C.tss_buffer_free(&outNk)
 
-	res := C.frozt_sapling_derive_address(pkp, extras, &outAddr)
-	if res != 0 {
-		return "", mapLibError(int(res))
-	}
-
-	return string(copyBuffer(&outAddr)), nil
-}
-
-func DeriveSaplingExtrasFromSeed(seed []byte, accountIndex uint32) ([]byte, error) {
-	pinner := new(runtime.Pinner)
-	defer pinner.Unpin()
-
-	s := cGoSlice(seed, pinner)
-
-	var outExtras C.tss_buffer
-	defer C.tss_buffer_free(&outExtras)
-
-	res := C.frozt_derive_sapling_extras_from_seed(s, C.uint32_t(accountIndex), &outExtras)
+	res := C.frozt_sapling_derive_keys(pkp, extras, &outAddr, &outIvk, &outNk)
 	if res != 0 {
 		return nil, mapLibError(int(res))
 	}
 
-	return copyBuffer(&outExtras), nil
+	return &SaplingKeys{
+		Address: string(copyBuffer(&outAddr)),
+		Ivk:     copyBuffer(&outIvk),
+		Nk:      copyBuffer(&outNk),
+	}, nil
+}
+
+func SaplingDecryptNoteFull(ivk, cmu, epk, encCiphertext []byte, height uint64) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	ivkSlice := cGoSlice(ivk, pinner)
+	cmuSlice := cGoSlice(cmu, pinner)
+	epkSlice := cGoSlice(epk, pinner)
+	ctSlice := cGoSlice(encCiphertext, pinner)
+
+	var outNoteData C.tss_buffer
+	defer C.tss_buffer_free(&outNoteData)
+
+	res := C.frozt_sapling_decrypt_note_full(ivkSlice, cmuSlice, epkSlice, ctSlice, C.uint64_t(height), &outNoteData)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outNoteData), nil
+}
+
+func SaplingComputeNullifier(pubKeyPackage, saplingExtras, noteData []byte, position, height uint64) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	pkpSlice := cGoSlice(pubKeyPackage, pinner)
+	extrasSlice := cGoSlice(saplingExtras, pinner)
+	ndSlice := cGoSlice(noteData, pinner)
+
+	var outNullifier C.tss_buffer
+	defer C.tss_buffer_free(&outNullifier)
+
+	res := C.frozt_sapling_compute_nullifier(pkpSlice, extrasSlice, ndSlice, C.uint64_t(position), C.uint64_t(height), &outNullifier)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outNullifier), nil
+}
+
+func SaplingTreeSize(treeStateHex []byte) (uint64, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	data := cGoSlice(treeStateHex, pinner)
+
+	var outSize C.uint64_t
+
+	res := C.frozt_sapling_tree_size(data, &outSize)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+
+	return uint64(outSize), nil
+}
+
+func SaplingTreeFromState(treeStateHex []byte) (TreeHandle, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	data := cGoSlice(treeStateHex, pinner)
+
+	var outTree C.Handle
+
+	res := C.frozt_sapling_tree_from_state(data, &outTree)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+
+	return TreeHandle(outTree._0), nil
+}
+
+func SaplingTreeAppend(tree TreeHandle, cmu []byte) error {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	cmuSlice := cGoSlice(cmu, pinner)
+
+	res := C.frozt_sapling_tree_append(cHandle(Handle(tree)), cmuSlice)
+	if res != 0 {
+		return mapLibError(int(res))
+	}
+
+	return nil
+}
+
+func SaplingTreeWitness(tree TreeHandle) (WitnessHandle, error) {
+	var outWitness C.Handle
+
+	res := C.frozt_sapling_tree_witness(cHandle(Handle(tree)), &outWitness)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+
+	return WitnessHandle(outWitness._0), nil
+}
+
+func SaplingWitnessAppend(witness WitnessHandle, cmu []byte) error {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	cmuSlice := cGoSlice(cmu, pinner)
+
+	res := C.frozt_sapling_witness_append(cHandle(Handle(witness)), cmuSlice)
+	if res != 0 {
+		return mapLibError(int(res))
+	}
+
+	return nil
+}
+
+func SaplingWitnessRoot(witness WitnessHandle) ([]byte, error) {
+	var outAnchor C.tss_buffer
+	defer C.tss_buffer_free(&outAnchor)
+
+	res := C.frozt_sapling_witness_root(cHandle(Handle(witness)), &outAnchor)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outAnchor), nil
+}
+
+func SaplingWitnessSerialize(witness WitnessHandle) ([]byte, error) {
+	var outData C.tss_buffer
+	defer C.tss_buffer_free(&outData)
+
+	res := C.frozt_sapling_witness_serialize(cHandle(Handle(witness)), &outData)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outData), nil
+}
+
+func SaplingWitnessDeserialize(data []byte) (WitnessHandle, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	dataSlice := cGoSlice(data, pinner)
+
+	var outWitness C.Handle
+
+	res := C.frozt_sapling_witness_deserialize(dataSlice, &outWitness)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+
+	return WitnessHandle(outWitness._0), nil
+}
+
+func TxBuilderNew(pubKeyPackage, saplingExtras []byte, targetHeight uint32) (TxBuilderHandle, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	pkpSlice := cGoSlice(pubKeyPackage, pinner)
+	extrasSlice := cGoSlice(saplingExtras, pinner)
+
+	var outHandle C.Handle
+
+	res := C.frozt_tx_builder_new(pkpSlice, extrasSlice, C.uint32_t(targetHeight), &outHandle)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+
+	return TxBuilderHandle(outHandle._0), nil
+}
+
+func TxBuilderAddSpend(builder TxBuilderHandle, noteData, witnessData []byte) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	noteSlice := cGoSlice(noteData, pinner)
+	witSlice := cGoSlice(witnessData, pinner)
+
+	var outAlpha C.tss_buffer
+	defer C.tss_buffer_free(&outAlpha)
+
+	res := C.frozt_tx_builder_add_spend(cHandle(Handle(builder)), noteSlice, witSlice, &outAlpha)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outAlpha), nil
+}
+
+func TxBuilderAddOutput(builder TxBuilderHandle, address string, amount uint64) error {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	addrBytes := []byte(address)
+	addrSlice := cGoSlice(addrBytes, pinner)
+
+	res := C.frozt_tx_builder_add_output(cHandle(Handle(builder)), addrSlice, C.uint64_t(amount))
+	if res != 0 {
+		return mapLibError(int(res))
+	}
+
+	return nil
+}
+
+func TxBuilderBuild(builder TxBuilderHandle) ([]byte, error) {
+	var outSighash C.tss_buffer
+	defer C.tss_buffer_free(&outSighash)
+
+	res := C.frozt_tx_builder_build(cHandle(Handle(builder)), &outSighash)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outSighash), nil
+}
+
+func TxBuilderComplete(builder TxBuilderHandle, spendAuthSigs [][]byte) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	packed := make([]byte, 0, len(spendAuthSigs)*64)
+	for _, sig := range spendAuthSigs {
+		packed = append(packed, sig...)
+	}
+	sigSlice := cGoSlice(packed, pinner)
+
+	var outRawTx C.tss_buffer
+	defer C.tss_buffer_free(&outRawTx)
+
+	res := C.frozt_tx_builder_complete(cHandle(Handle(builder)), sigSlice, &outRawTx)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+
+	return copyBuffer(&outRawTx), nil
+}
+
+func SaplingTryDecryptCompact(ivk, cmu, epk, ciphertext []byte, height uint64) (uint64, bool, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	ivkSlice := cGoSlice(ivk, pinner)
+	cmuSlice := cGoSlice(cmu, pinner)
+	epkSlice := cGoSlice(epk, pinner)
+	ctSlice := cGoSlice(ciphertext, pinner)
+
+	var outValue C.uint64_t
+
+	res := C.frozt_sapling_try_decrypt_compact(ivkSlice, cmuSlice, epkSlice, ctSlice, C.uint64_t(height), &outValue)
+	if res == C.LIB_SAPLING_ERROR {
+		return 0, false, nil
+	}
+	if res != 0 {
+		return 0, false, mapLibError(int(res))
+	}
+
+	return uint64(outValue), true, nil
 }

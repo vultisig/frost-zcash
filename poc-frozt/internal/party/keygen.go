@@ -6,7 +6,7 @@ import (
 	"log"
 
 	frozt "github.com/vultisig/frozt-zcash/go-frozt"
-	"github.com/vultisig/frozt-zcash/go-frozt/orchestration"
+	"github.com/vultisig/frozt-zcash/poc-frozt/internal/orchestration"
 )
 
 func (n *Node) runKeygen(ctx context.Context) error {
@@ -49,7 +49,7 @@ func (n *Node) runKeygen(ctx context.Context) error {
 		return fmt.Errorf("get verifying key: %w", err)
 	}
 
-	zAddr, err := frozt.SaplingDeriveAddress(result.PubKeyPackage, result.SaplingExtras)
+	keys, err := frozt.SaplingDeriveKeys(result.PubKeyPackage, result.SaplingExtras)
 	if err != nil {
 		return fmt.Errorf("derive z-address: %w", err)
 	}
@@ -57,7 +57,7 @@ func (n *Node) runKeygen(ctx context.Context) error {
 	log.Printf("[%s] Keygen complete!", n.Config.PartyID)
 	log.Printf("[%s]   Identifier: %d", n.Config.PartyID, id)
 	log.Printf("[%s]   Verifying key: %x", n.Config.PartyID, verifyingKey)
-	log.Printf("[%s]   Z-address: %s", n.Config.PartyID, zAddr)
+	log.Printf("[%s]   Z-address: %s", n.Config.PartyID, keys.Address)
 
 	err = n.Client.CompleteTSS(ctx, n.Config.SessionID, n.Config.Parties)
 	if err != nil {

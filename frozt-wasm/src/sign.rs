@@ -1,13 +1,42 @@
-use std::collections::BTreeMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, HashMap};
 
 use frost_core::keys::{KeyPackage, PublicKeyPackage};
 use frost_core::round1::{SigningCommitments, SigningNonces};
 use frost_core::round2::SignatureShare;
 use frost_core::SigningPackage;
+
+use crate::Identifier;
 use frost_rerandomized::{Randomizer, RandomizedParams};
 use wasm_bindgen::prelude::*;
 
-use crate::{codec, js_obj, set_bytes, to_js_err, Identifier, J};
+use crate::{codec, js_obj, set_bytes, to_js_err, J};
+
+thread_local! {
+    static NONCE_STORE: RefCell<HashMap<u32, SigningNonces<J>>> = RefCell::new(HashMap::new());
+    static NONCE_NEXT_ID: Cell<u32> = Cell::new(1);
+}
+
+fn store_nonces(nonces: SigningNonces<J>) -> u32 {
+    NONCE_NEXT_ID.with(|next| {
+        let id = next.get();
+        next.set(id.wrapping_add(1));
+        if next.get() == 0 {
+            next.set(1);
+        }
+        NONCE_STORE.with(|store| {
+            store.borrow_mut().insert(id, nonces);
+        });
+        id
+    })
+}
+
+fn take_nonces(id: u32) -> Result<SigningNonces<J>, JsError> {
+    NONCE_STORE.with(|store| {
+        store.borrow_mut().remove(&id)
+            .ok_or_else(|| JsError::new(&format!("nonce handle {} not found or already used", id)))
+    })
+}
 
 fn decode_commitments_map(
     data: &[u8],
@@ -37,13 +66,24 @@ pub fn frozt_sign_commit(key_package: &[u8]) -> Result<JsValue, JsError> {
     let (nonces, commitments) =
         frost_core::round1::commit(kp.signing_share(), &mut rng);
 
-    let nonces_bytes = nonces.serialize().map_err(to_js_err)?;
     let commitments_bytes = commitments.serialize().map_err(to_js_err)?;
+    let nonce_id = store_nonces(nonces);
 
     let obj = js_obj();
-    set_bytes(&obj, "nonces", &nonces_bytes);
+    js_sys::Reflect::set(
+        &obj,
+        &JsValue::from_str("nonceHandle"),
+        &JsValue::from(nonce_id),
+    ).unwrap();
     set_bytes(&obj, "commitments", &commitments_bytes);
     Ok(obj.into())
+}
+
+#[wasm_bindgen]
+pub fn frozt_nonces_free(nonce_handle: u32) {
+    NONCE_STORE.with(|store| {
+        store.borrow_mut().remove(&nonce_handle);
+    });
 }
 
 #[wasm_bindgen]
@@ -77,13 +117,13 @@ pub fn frozt_sign_new_package(
 #[wasm_bindgen]
 pub fn frozt_sign(
     signing_package: &[u8],
-    nonces: &[u8],
+    nonce_handle: u32,
     key_package: &[u8],
     randomizer: &[u8],
 ) -> Result<Vec<u8>, JsError> {
     let sp =
         SigningPackage::<J>::deserialize(signing_package).map_err(to_js_err)?;
-    let nonces = SigningNonces::<J>::deserialize(nonces).map_err(to_js_err)?;
+    let nonces = take_nonces(nonce_handle)?;
     let kp = KeyPackage::<J>::deserialize(key_package).map_err(to_js_err)?;
     let randomizer =
         Randomizer::<J>::deserialize(randomizer).map_err(to_js_err)?;

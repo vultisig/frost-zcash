@@ -42,7 +42,7 @@ pub(crate) fn identifier_to_u16(id: &Identifier) -> Result<u16, lib_error> {
         .ok_or(lib_error::LIB_INVALID_IDENTIFIER)
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_encode_identifier(
     id: u16,
     out_bytes: Option<&mut tss_buffer>,
@@ -56,7 +56,7 @@ pub extern "C" fn frozt_encode_identifier(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_decode_identifier(
     id_bytes: Option<&go_slice>,
     out_id: Option<&mut u16>,
@@ -70,7 +70,7 @@ pub extern "C" fn frozt_decode_identifier(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_keypackage_identifier(
     key_package: Option<&go_slice>,
     out_id: Option<&mut u16>,
@@ -86,7 +86,7 @@ pub extern "C" fn frozt_keypackage_identifier(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_pubkeypackage_verifying_key(
     pub_key_package: Option<&go_slice>,
     out_key: Option<&mut tss_buffer>,

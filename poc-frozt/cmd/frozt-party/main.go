@@ -14,12 +14,14 @@ import (
 
 func main() {
 	cfg := party.Config{
-		RelayURL:    envOrDefault("RELAY_URL", "http://localhost:9090"),
-		PartyID:     requireEnv("PARTY_ID"),
-		SessionID:   requireEnv("SESSION_ID"),
-		Operation:   requireEnv("OPERATION"),
-		KeystoreDir: envOrDefault("KEYSTORE_DIR", "/data/keystore"),
-		SignMessage:  envOrDefault("SIGN_MESSAGE", ""),
+		RelayURL:         envOrDefault("RELAY_URL", "http://localhost:9090"),
+		PartyID:          requireEnv("PARTY_ID"),
+		SessionID:        requireEnv("SESSION_ID"),
+		Operation:        requireEnv("OPERATION"),
+		KeystoreDir:      envOrDefault("KEYSTORE_DIR", "/data/keystore"),
+		SignMessage:       envOrDefault("SIGN_MESSAGE", ""),
+		EncryptionKeyHex:   os.Getenv("ENCRYPTION_KEY"),
+		KeystorePassphrase: os.Getenv("KEYSTORE_PASSPHRASE"),
 	}
 
 	identifier, err := strconv.ParseUint(requireEnv("IDENTIFIER"), 10, 16)
@@ -46,6 +48,29 @@ func main() {
 	signersStr := os.Getenv("SIGNERS")
 	if signersStr != "" {
 		cfg.Signers = strings.Split(signersStr, ",")
+	}
+
+	cfg.Mnemonic = os.Getenv("MNEMONIC")
+	cfg.ExpectedAddress = os.Getenv("EXPECTED_ADDRESS")
+	cfg.LightwalletdEndpoint = os.Getenv("LIGHTWALLETD_ENDPOINT")
+	cfg.RecipientAddress = os.Getenv("RECIPIENT_ADDRESS")
+
+	sendAmountStr := os.Getenv("SEND_AMOUNT")
+	if sendAmountStr != "" {
+		sendAmount, parseErr := strconv.ParseUint(sendAmountStr, 10, 64)
+		if parseErr != nil {
+			log.Fatalf("invalid SEND_AMOUNT: %v", parseErr)
+		}
+		cfg.SendAmount = sendAmount
+	}
+
+	birthdayStr := os.Getenv("BIRTHDAY")
+	if birthdayStr != "" {
+		birthday, parseErr := strconv.ParseUint(birthdayStr, 10, 64)
+		if parseErr != nil {
+			log.Fatalf("invalid BIRTHDAY: %v", parseErr)
+		}
+		cfg.Birthday = birthday
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

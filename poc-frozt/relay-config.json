@@ -3,7 +3,7 @@
   "redis_server": {
     "addr": "redis:6379",
     "user": "",
-    "password": "",
+    "password": "frozt-redis-secret",
     "db": 0
   }
 }

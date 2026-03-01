@@ -9,6 +9,7 @@ use crate::{
     errors::*,
     handle::Handle,
     keygen::{decode_r1_map, decode_r2_map},
+    zeroize_scalar_vec,
 };
 
 type J = JubjubBlake2b512;
@@ -55,7 +56,7 @@ fn decode_old_identifiers(data: &[u8]) -> Result<Vec<Identifier>, lib_error> {
     Ok(ids)
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_reshare_part1(
     identifier: u16,
     max_signers: u16,
@@ -86,6 +87,9 @@ pub extern "C" fn frozt_reshare_part1(
                 let li = lagrange_coeff(kp.identifier(), &old_ids)?;
                 let mut share = di * li;
 
+                if old_ids.len() as u16 > max_signers {
+                    return Err(lib_error::LIB_RESHARE_ERROR);
+                }
                 let num_new = max_signers - old_ids.len() as u16;
                 let min_old_id = old_ids
                     .iter()
@@ -123,11 +127,13 @@ pub extern "C" fn frozt_reshare_part1(
 
         let secret = dkg::round1::SecretPackage::new(
             id,
-            coefficients,
+            coefficients.clone(),
             commitment.clone(),
             min_signers,
             max_signers,
         );
+
+        zeroize_scalar_vec(&mut coefficients);
 
         let package = dkg::round1::Package::new(commitment, proof);
         let pkg_bytes = package.serialize().map_err(ser_err)?;
@@ -139,7 +145,7 @@ pub extern "C" fn frozt_reshare_part1(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_reshare_part3(
     secret: Handle,
     round1_packages: Option<&go_slice>,

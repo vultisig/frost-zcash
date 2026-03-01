@@ -47,7 +47,7 @@ fn decode_shares_map(
     )
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_sign_commit(
     key_package: Option<&go_slice>,
     out_nonces: Option<&mut Handle>,
@@ -72,7 +72,7 @@ pub extern "C" fn frozt_sign_commit(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_sign_new_package(
     message: Option<&go_slice>,
     commitments_map: Option<&go_slice>,
@@ -109,7 +109,7 @@ pub extern "C" fn frozt_sign_new_package(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_sign(
     signing_package: Option<&go_slice>,
     nonces: Handle,
@@ -141,7 +141,7 @@ pub extern "C" fn frozt_sign(
     })
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn frozt_sign_aggregate(
     signing_package: Option<&go_slice>,
     shares_map: Option<&go_slice>,

@@ -6,7 +6,7 @@ import (
 )
 
 type MapEntry struct {
-	ID    []byte
+	ID    uint16
 	Value []byte
 }
 
@@ -14,10 +14,14 @@ func EncodeMap(entries []MapEntry) []byte {
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, uint32(len(entries)))
 	for _, e := range entries {
+		idBytes, err := encodeIdentifier(e.ID)
+		if err != nil {
+			continue
+		}
 		klen := make([]byte, 4)
-		binary.LittleEndian.PutUint32(klen, uint32(len(e.ID)))
+		binary.LittleEndian.PutUint32(klen, uint32(len(idBytes)))
 		buf = append(buf, klen...)
-		buf = append(buf, e.ID...)
+		buf = append(buf, idBytes...)
 		vlen := make([]byte, 4)
 		binary.LittleEndian.PutUint32(vlen, uint32(len(e.Value)))
 		buf = append(buf, vlen...)
@@ -46,6 +50,11 @@ func DecodeMap(data []byte) ([]MapEntry, error) {
 		copy(key, data[pos:pos+klen])
 		pos += klen
 
+		id, err := decodeIdentifier(key)
+		if err != nil {
+			return nil, fmt.Errorf("frozt: codec: invalid identifier at entry %d: %w", i, err)
+		}
+
 		if pos+4 > len(data) {
 			return nil, fmt.Errorf("frozt: codec: truncated at value length %d", i)
 		}
@@ -58,7 +67,7 @@ func DecodeMap(data []byte) ([]MapEntry, error) {
 		copy(val, data[pos:pos+vlen])
 		pos += vlen
 
-		entries = append(entries, MapEntry{ID: key, Value: val})
+		entries = append(entries, MapEntry{ID: id, Value: val})
 	}
 	return entries, nil
 }

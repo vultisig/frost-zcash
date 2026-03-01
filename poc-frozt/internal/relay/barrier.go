@@ -1,4 +1,4 @@
-package orchestration
+package relay
 
 import (
 	"context"
@@ -7,10 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"time"
-)
-
-const (
-	barrierPollInterval = 100 * time.Millisecond
 )
 
 func (c *RelayClient) WaitForBarrier(ctx context.Context, sessionID, phase, partyID string, count, expectedParties int) ([]string, error) {
@@ -25,6 +21,7 @@ func (c *RelayClient) WaitForBarrier(ctx context.Context, sessionID, phase, part
 		return nil, fmt.Errorf("post barrier: %w", err)
 	}
 
+	polls := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -32,16 +29,21 @@ func (c *RelayClient) WaitForBarrier(ctx context.Context, sessionID, phase, part
 		default:
 		}
 
-		resp, err := c.GetBarrier(ctx, sessionID, phase, count)
-		if err != nil {
-			return nil, fmt.Errorf("get barrier: %w", err)
+		resp, pollErr := c.GetBarrier(ctx, sessionID, phase, count)
+		if pollErr != nil {
+			return nil, fmt.Errorf("get barrier: %w", pollErr)
 		}
 
 		if len(resp.ReadyParties) >= expectedParties {
 			return resp.ReadyParties, nil
 		}
 
-		time.Sleep(barrierPollInterval)
+		polls++
+		if polls%c.BarrierRepostCount == 0 {
+			_, _ = c.PostBarrier(ctx, sessionID, req)
+		}
+
+		time.Sleep(c.BarrierPollInterval)
 	}
 }
 
