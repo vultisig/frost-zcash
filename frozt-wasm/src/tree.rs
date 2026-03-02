@@ -216,6 +216,7 @@ impl WasmSaplingWitness {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wasm_bindgen_test::*;
 
     #[test]
     fn test_tree_from_empty_state() {
@@ -277,4 +278,23 @@ mod tests {
         assert_ne!(root_before, root_after);
     }
 
+    #[wasm_bindgen_test]
+    fn test_tree_from_empty_state_wasm() {
+        test_tree_from_empty_state();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tree_append_and_witness_wasm() {
+        test_tree_append_and_witness();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_witness_serialize_roundtrip_wasm() {
+        test_witness_serialize_roundtrip();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_witness_append_changes_root_wasm() {
+        test_witness_append_changes_root();
+    }
 }

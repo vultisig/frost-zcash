@@ -1,4 +1,5 @@
 mod codec;
+mod cross_verify;
 mod key_import;
 mod keygen;
 mod keyshare;

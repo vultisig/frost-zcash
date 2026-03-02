@@ -44,6 +44,7 @@ pub fn frozt_pubkeypackage_verifying_key(pub_key_package: &[u8]) -> Result<Vec<u
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wasm_bindgen_test::*;
 
     #[test]
     fn test_identifier_roundtrip() {
@@ -52,5 +53,10 @@ mod tests {
             let decoded = identifier_to_u16(&ident).unwrap();
             assert_eq!(id, decoded);
         }
+    }
+
+    #[wasm_bindgen_test]
+    fn test_identifier_roundtrip_wasm() {
+        test_identifier_roundtrip();
     }
 }

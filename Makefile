@@ -1,4 +1,4 @@
-.PHONY: build-rust build-go build-linux-amd64 build-linux-arm64 test-rust test-go test docker-keygen docker-sign clean
+.PHONY: build-rust build-go build-linux-amd64 build-linux-arm64 test-rust test-go test-wasm test test-all docker-keygen docker-sign clean
 
 build-rust:
 	cargo build --release -p frozt-lib
@@ -36,7 +36,12 @@ test-rust:
 test-go: build-go
 	cd go-frozt && go test -v ./...
 
+test-wasm:
+	cd frozt-wasm && wasm-pack test --node
+
 test: test-rust test-go
+
+test-all: test-rust test-go test-wasm
 
 docker-keygen:
 	cd poc-frozt && ./scripts/run-keygen.sh $(SESSION)

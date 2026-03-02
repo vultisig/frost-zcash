@@ -181,6 +181,7 @@ pub(crate) mod tests {
     use super::*;
     use frost_core::keys::dkg;
     use crate::keygen;
+    use wasm_bindgen_test::*;
 
     pub struct KeyImportResult {
         pub results: Vec<(Vec<u8>, Vec<u8>)>,
@@ -190,7 +191,10 @@ pub(crate) mod tests {
 
     #[test]
     fn test_derive_spending_key_deterministic() {
-        let seed = [0xABu8; 64];
+        let seed = hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap();
         let sk1 = derive_spending_key(&seed, 0).unwrap();
         let sk2 = derive_spending_key(&seed, 0).unwrap();
         assert_eq!(sk1.len(), 32);
@@ -199,7 +203,10 @@ pub(crate) mod tests {
 
     #[test]
     fn test_derive_spending_key_different_accounts() {
-        let seed = [0xABu8; 64];
+        let seed = hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap();
         let sk0 = derive_spending_key(&seed, 0).unwrap();
         let sk1 = derive_spending_key(&seed, 1).unwrap();
         assert_ne!(sk0, sk1);
@@ -207,7 +214,10 @@ pub(crate) mod tests {
 
     #[test]
     fn test_spending_key_to_verifying_key() {
-        let seed = [0xABu8; 64];
+        let seed = hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap();
         let sk = derive_spending_key(&seed, 0).unwrap();
         let vk = spending_key_to_vk(&sk).unwrap();
         assert_eq!(vk.len(), 32);
@@ -218,7 +228,10 @@ pub(crate) mod tests {
 
     #[test]
     fn test_key_import_full_flow() {
-        let seed = [0xABu8; 64];
+        let seed = hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap();
         let import = run_key_import_native(3, 2, &seed, 0);
         assert_eq!(import.results.len(), 3);
 
@@ -227,6 +240,26 @@ pub(crate) mod tests {
         let vk_bytes: Vec<u8> = pkp0.verifying_key().serialize().unwrap();
         assert_eq!(&vk_bytes[..], &import.vk[..]);
         assert_eq!(pkp0.verifying_key(), pkp1.verifying_key());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_derive_spending_key_deterministic_wasm() {
+        test_derive_spending_key_deterministic();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_derive_spending_key_different_accounts_wasm() {
+        test_derive_spending_key_different_accounts();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_spending_key_to_verifying_key_wasm() {
+        test_spending_key_to_verifying_key();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_key_import_full_flow_wasm() {
+        test_key_import_full_flow();
     }
 
     pub(crate) fn run_key_import_native(

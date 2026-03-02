@@ -38,7 +38,7 @@ fn take_nonces(id: u32) -> Result<SigningNonces<J>, JsError> {
     })
 }
 
-fn decode_commitments_map(
+pub(crate) fn decode_commitments_map(
     data: &[u8],
 ) -> Result<BTreeMap<Identifier, SigningCommitments<J>>, JsError> {
     codec::decode_map(
@@ -48,7 +48,7 @@ fn decode_commitments_map(
     )
 }
 
-fn decode_shares_map(
+pub(crate) fn decode_shares_map(
     data: &[u8],
 ) -> Result<BTreeMap<Identifier, SignatureShare<J>>, JsError> {
     codec::decode_map(
@@ -164,6 +164,7 @@ pub fn frozt_sign_aggregate(
 mod tests {
     use super::*;
     use crate::keygen::tests::run_dkg_native;
+    use wasm_bindgen_test::*;
 
     fn encode_id_map(entries: &[(u16, Vec<u8>)]) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -258,5 +259,10 @@ mod tests {
 
         let sig_bytes = signature.serialize().unwrap();
         assert!(!sig_bytes.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_sign_2x3_wasm() {
+        test_sign_2x3();
     }
 }

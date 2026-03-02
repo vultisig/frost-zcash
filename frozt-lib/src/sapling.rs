@@ -383,34 +383,26 @@ mod tests {
         )
     }
 
+    fn abandon_seed() -> Vec<u8> {
+        hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap()
+    }
+
+    const ABANDON_ADDR: &str = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
+
     #[test]
     fn test_sapling_generate_and_derive() {
-        let seed = [0xABu8; 64];
+        let seed = abandon_seed();
         let import = crate::key_import::tests::run_key_import(3, 2, &seed, 0);
         let pkp = &import.results[0].1;
         assert_eq!(import.extras.len(), EXTRAS_LEN);
 
         let (addr, ivk, nk) = derive_keys_helper(pkp, &import.extras);
-        let expected = "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s";
-        assert_eq!(addr, expected, "z-address should match wallet for 0xAB seed");
+        assert_eq!(addr, ABANDON_ADDR);
         assert_eq!(ivk.len(), 32);
         assert_eq!(nk.len(), 32);
-    }
-
-    #[test]
-    fn test_sapling_extras_from_seed_matches_known_address() {
-        let seed = hex::decode(
-            "c829196323d2eea891b2b6a01e0f10f31645a339e0b1ab0c1f3184d6ac58589a\
-             2fdab5c19437877ba33887541a27436eb287393dea0265a3681da5e6f5853627"
-        ).unwrap();
-
-        let import = crate::key_import::tests::run_key_import(3, 2, &seed, 0);
-        let pkp = &import.results[0].1;
-
-        let (addr, _, _) = derive_keys_helper(pkp, &import.extras);
-
-        let expected = "zs1s82p0h0689ccjdfe39tvlzj6hyp2ukqrukfdvdd8cgqfgnexc958uzt0nshx2vk2l9xmxzun7vq";
-        assert_eq!(addr, expected, "z-address should match known wallet address");
     }
 
     #[test]
@@ -448,19 +440,13 @@ mod tests {
     }
 
     #[test]
-    fn test_sapling_second_mnemonic_verification() {
-        let seed = hex::decode(
-            "23068a91016aea698ecaed597ef3c9faffcd849f500f9bb9462eae0fa5229685\
-             316ce51f7da4dc90dc98cfadb3e4756ace08e85cfe5d0d25c0acdf96e30363b9"
-        ).unwrap();
-
+    fn test_sapling_import_and_sign() {
+        let seed = abandon_seed();
         let import = crate::key_import::tests::run_key_import(3, 2, &seed, 0);
         let pkp = &import.results[0].1;
 
         let (addr, _, _) = derive_keys_helper(pkp, &import.extras);
-
-        let expected = "zs1ghykkprzrcdpkyye0skmddldfhcxj8w4x7kvm9yvm739z2h9xxdqy7n8ntv4p36032zww8pv6e8";
-        assert_eq!(addr, expected, "z-address should match wallet for divorce mnemonic");
+        assert_eq!(addr, ABANDON_ADDR);
 
         crate::sign::tests::run_sign(&import.results, &[0, 1]);
         crate::sign::tests::run_sign(&import.results, &[1, 2]);
@@ -468,7 +454,7 @@ mod tests {
 
     #[test]
     fn test_sapling_derive_nk_via_keys() {
-        let seed = [0xABu8; 64];
+        let seed = abandon_seed();
         let import = crate::key_import::tests::run_key_import(3, 2, &seed, 0);
         let pkp = &import.results[0].1;
 

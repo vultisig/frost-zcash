@@ -171,6 +171,25 @@ func (n *Node) runSpend(ctx context.Context) error {
 				log.Printf("[%s] Warning: failed to mark note as spent: %v", n.Config.PartyID, markErr)
 			}
 		}
+
+		recipients := orchestration.OtherParties(signerParties, n.Config.PartyID)
+		sendErr := n.Client.SendMessage(ctx, n.Config.SessionID, "spend-broadcast-done", relay.Message{
+			SessionID: n.Config.SessionID,
+			From:      n.Config.PartyID,
+			To:        recipients,
+			Body:      "done",
+		})
+		if sendErr != nil {
+			return fmt.Errorf("send broadcast-done: %w", sendErr)
+		}
+	} else {
+		waitErr := orchestration.WaitForMessage(ctx, n.Client, n.Config.SessionID, n.Config.PartyID, "spend-broadcast-done", func(body string) error {
+			return nil
+		})
+		if waitErr != nil {
+			return fmt.Errorf("wait for broadcast-done: %w", waitErr)
+		}
+		log.Printf("[%s] Coordinator confirmed broadcast complete", n.Config.PartyID)
 	}
 
 	completeErr := n.Client.CompleteTSS(ctx, n.Config.SessionID, signerParties)

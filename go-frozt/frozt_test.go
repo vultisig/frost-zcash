@@ -2,8 +2,22 @@ package frozt
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 )
+
+const abandonAddr = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta"
+
+func abandonSeed(t *testing.T) []byte {
+	t.Helper()
+	seed, err := hex.DecodeString(
+		"5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1" +
+			"9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4")
+	if err != nil {
+		t.Fatalf("decode abandon seed: %v", err)
+	}
+	return seed
+}
 
 func runDKG(t *testing.T, n, threshold uint16) (keyPackages [][]byte, pubKeyPackage []byte) {
 	t.Helper()
@@ -418,10 +432,7 @@ func runKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIndex u
 }
 
 func TestKeyImport(t *testing.T) {
-	seed := make([]byte, 64)
-	for i := range seed {
-		seed[i] = 0xAB
-	}
+	seed := abandonSeed(t)
 
 	t.Log("=== Key Import 2-of-3 ===")
 	result := runKeyImport(t, 3, 2, seed, 0)
@@ -449,7 +460,7 @@ func TestKeyImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaplingDeriveKeys: %v", err)
 	}
-	expectedAddr := "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s"
+	expectedAddr := abandonAddr
 	if keys.Address != expectedAddr {
 		t.Fatalf("z-address mismatch:\n  got:  %s\n  want: %s", keys.Address, expectedAddr)
 	}
@@ -572,10 +583,7 @@ func TestSaplingDeriveKeysCombined(t *testing.T) {
 	}
 
 	t.Run("DeriveKeysDeterministic", func(t *testing.T) {
-		seed := make([]byte, 64)
-		for i := range seed {
-			seed[i] = 0xAB
-		}
+		seed := abandonSeed(t)
 		result1 := runKeyImport(t, 3, 2, seed, 0)
 		result2 := runKeyImport(t, 3, 2, seed, 0)
 		if !bytes.Equal(result1.extras, result2.extras) {
@@ -700,11 +708,7 @@ func TestTreeMultipleAppends(t *testing.T) {
 }
 
 func TestTxBuilder(t *testing.T) {
-	seed := make([]byte, 64)
-	for i := range seed {
-		seed[i] = 0xAB
-	}
-
+	seed := abandonSeed(t)
 	result := runKeyImport(t, 3, 2, seed, 0)
 
 	builder, err := TxBuilderNew(result.pubKeyPackage, result.extras, 2_000_000)
@@ -713,7 +717,7 @@ func TestTxBuilder(t *testing.T) {
 	}
 	defer builder.Close()
 
-	addr := "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s"
+	addr := abandonAddr
 	err = TxBuilderAddOutput(builder, addr, 100000)
 	if err != nil {
 		t.Fatalf("TxBuilderAddOutput: %v", err)

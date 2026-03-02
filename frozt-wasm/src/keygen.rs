@@ -102,6 +102,7 @@ pub fn frozt_dkg_part3(
 pub(crate) mod tests {
     use super::*;
     use crate::keyshare::identifier_to_u16;
+    use wasm_bindgen_test::*;
 
     pub(crate) fn encode_id_map_native(entries: &[(u16, Vec<u8>)]) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -238,5 +239,10 @@ pub(crate) mod tests {
 
         assert_eq!(pkp0.verifying_key(), pkp1.verifying_key());
         assert_eq!(pkp1.verifying_key(), pkp2.verifying_key());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_dkg_2x3_wasm() {
+        test_dkg_2x3();
     }
 }

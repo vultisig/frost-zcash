@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"testing"
 
+	gobip39 "github.com/tyler-smith/go-bip39"
 	frozt "github.com/vultisig/frozt-zcash/go-frozt"
 
 	"github.com/vultisig/frozt-zcash/poc-frozt/internal/bip39"
@@ -214,6 +215,93 @@ func loadEnv(t *testing.T) (mnemonic string, birthday int, expectedAddr string) 
 	return mnemonic, birthday, expectedAddr
 }
 
+func loadEnv2(t *testing.T) (mnemonic string, birthday int, expectedAddr string) {
+	t.Helper()
+
+	envPath := filepath.Join("..", "..", ".env")
+	env, err := config.LoadDotEnv(envPath)
+	if err != nil {
+		t.Fatalf("LoadDotEnv: %v", err)
+	}
+
+	mnemonic = env["MNEMONIC_2"]
+	if mnemonic == "" {
+		t.Fatal("MNEMONIC_2 not set in .env")
+	}
+
+	birthdayStr := env["BIRTHDAY_2"]
+	birthday, err = strconv.Atoi(birthdayStr)
+	if err != nil {
+		t.Fatalf("invalid BIRTHDAY_2: %v", err)
+	}
+
+	expectedAddr = env["EXPECTED_ADDRESS_2"]
+	if expectedAddr == "" {
+		t.Fatal("EXPECTED_ADDRESS_2 not set in .env")
+	}
+
+	return mnemonic, birthday, expectedAddr
+}
+
+func TestMnemonicValidBIP39(t *testing.T) {
+	mnemonic, _, _ := loadEnv(t)
+	if !gobip39.IsMnemonicValid(mnemonic) {
+		t.Fatalf("MNEMONIC is not a valid BIP39 phrase: %s", mnemonic)
+	}
+}
+
+func TestMnemonic2ValidBIP39(t *testing.T) {
+	mnemonic, _, _ := loadEnv2(t)
+	if !gobip39.IsMnemonicValid(mnemonic) {
+		t.Fatalf("MNEMONIC_2 is not a valid BIP39 phrase: %s", mnemonic)
+	}
+}
+
+func loadEnv3(t *testing.T) (mnemonic string, birthday int, expectedAddr string) {
+	t.Helper()
+
+	envPath := filepath.Join("..", "..", ".env")
+	env, err := config.LoadDotEnv(envPath)
+	if err != nil {
+		t.Fatalf("LoadDotEnv: %v", err)
+	}
+
+	mnemonic = env["MNEMONIC_3"]
+	if mnemonic == "" {
+		t.Fatal("MNEMONIC_3 not set in .env")
+	}
+
+	birthdayStr := env["BIRTHDAY_3"]
+	birthday, err = strconv.Atoi(birthdayStr)
+	if err != nil {
+		t.Fatalf("invalid BIRTHDAY_3: %v", err)
+	}
+
+	expectedAddr = env["EXPECTED_ADDRESS_3"]
+
+	return mnemonic, birthday, expectedAddr
+}
+
+func TestMnemonic3ValidBIP39(t *testing.T) {
+	mnemonic, _, _ := loadEnv3(t)
+	if !gobip39.IsMnemonicValid(mnemonic) {
+		t.Fatalf("MNEMONIC_3 is not a valid BIP39 phrase: %s", mnemonic)
+	}
+}
+
+func TestDeriveAddress3(t *testing.T) {
+	mnemonic, _, _ := loadEnv3(t)
+
+	seed := bip39.MnemonicToSeed(mnemonic)
+	result := runKeyImport(t, 3, 2, seed, 0)
+
+	keys, err := frozt.SaplingDeriveKeys(result.pubKeyPackage, result.extras)
+	if err != nil {
+		t.Fatalf("SaplingDeriveKeys: %v", err)
+	}
+	t.Logf("z-address: %s", keys.Address)
+}
+
 func TestSeedVault(t *testing.T) {
 	mnemonic, birthday, expectedAddr := loadEnv(t)
 
@@ -320,8 +408,172 @@ func TestSeedVault(t *testing.T) {
 	t.Log("=== All vault operations successful ===")
 }
 
+func TestSeedVault2(t *testing.T) {
+	mnemonic, birthday, expectedAddr := loadEnv2(t)
+
+	t.Log("=== BIP39 seed derivation ===")
+	seed := bip39.MnemonicToSeed(mnemonic)
+	t.Logf("seed: %x (%d bytes)", seed, len(seed))
+
+	t.Log("=== Key import 2-of-3 ===")
+	result := runKeyImport(t, 3, 2, seed, 0)
+
+	importedVK, err := frozt.PubKeyPackageVerifyingKey(result.pubKeyPackage)
+	if err != nil {
+		t.Fatalf("PubKeyPackageVerifyingKey: %v", err)
+	}
+	if !bytes.Equal(result.vk, importedVK) {
+		t.Fatal("verifying key mismatch after import")
+	}
+
+	t.Log("=== Derive z-address ===")
+	keys, err := frozt.SaplingDeriveKeys(result.pubKeyPackage, result.extras)
+	if err != nil {
+		t.Fatalf("SaplingDeriveKeys: %v", err)
+	}
+	t.Logf("z-address: %s", keys.Address)
+	if keys.Address != expectedAddr {
+		t.Fatalf("address mismatch:\n  got:  %s\n  want: %s", keys.Address, expectedAddr)
+	}
+
+	t.Log("=== Sign (parties 0,1) ===")
+	sig := runSign(t, result.keyPackages, result.pubKeyPackage, []int{0, 1}, []byte("vault test 2"))
+	t.Logf("signature: %x (%d bytes)", sig, len(sig))
+
+	t.Log("=== Sign (parties 1,2) ===")
+	sig2 := runSign(t, result.keyPackages, result.pubKeyPackage, []int{1, 2}, []byte("vault test 2"))
+	t.Logf("signature: %x (%d bytes)", sig2, len(sig2))
+
+	t.Log("=== Export .vultshare files ===")
+	tmpDir := t.TempDir()
+	for i, kp := range result.keyPackages {
+		share := VultShare{
+			Version:       1,
+			Chain:         "zcash-sapling",
+			Threshold:     2,
+			TotalParties:  3,
+			PartyID:       i + 1,
+			Birthday:      birthday,
+			ZAddress:      keys.Address,
+			KeyPackage:    base64.StdEncoding.EncodeToString(kp),
+			PubKeyPackage: base64.StdEncoding.EncodeToString(result.pubKeyPackage),
+			SaplingExtras: base64.StdEncoding.EncodeToString(result.extras),
+		}
+		path := filepath.Join(tmpDir, fmt.Sprintf("party-%d.vultshare", i+1))
+		exportErr := ExportVultShare(path, share)
+		if exportErr != nil {
+			t.Fatalf("ExportVultShare party %d: %v", i+1, exportErr)
+		}
+		info, _ := os.Stat(path)
+		t.Logf("exported party-%d.vultshare (%d bytes)", i+1, info.Size())
+	}
+
+	t.Log("=== Re-import .vultshare and verify ===")
+	importedKPs := make([][]byte, 3)
+	var importedPKP []byte
+	var importedExtras []byte
+	for i := 0; i < 3; i++ {
+		path := filepath.Join(tmpDir, fmt.Sprintf("party-%d.vultshare", i+1))
+		share, importErr := ImportVultShare(path)
+		if importErr != nil {
+			t.Fatalf("ImportVultShare party %d: %v", i+1, importErr)
+		}
+
+		kpBytes, _ := base64.StdEncoding.DecodeString(share.KeyPackage)
+		pkpBytes, _ := base64.StdEncoding.DecodeString(share.PubKeyPackage)
+		extrasBytes, _ := base64.StdEncoding.DecodeString(share.SaplingExtras)
+
+		importedKPs[i] = kpBytes
+		if i == 0 {
+			importedPKP = pkpBytes
+			importedExtras = extrasBytes
+		}
+
+		if share.ZAddress != expectedAddr {
+			t.Fatalf("imported share %d address mismatch", i+1)
+		}
+	}
+
+	reKeys, err := frozt.SaplingDeriveKeys(importedPKP, importedExtras)
+	if err != nil {
+		t.Fatalf("re-derive address: %v", err)
+	}
+	if reKeys.Address != expectedAddr {
+		t.Fatalf("re-derived address mismatch:\n  got:  %s\n  want: %s", reKeys.Address, expectedAddr)
+	}
+	t.Log("re-derived address matches after import")
+
+	t.Log("=== Sign with re-imported shares (parties 0,1) ===")
+	sig3 := runSign(t, importedKPs, importedPKP, []int{0, 1}, []byte("re-imported vault test 2"))
+	t.Logf("signature: %x (%d bytes)", sig3, len(sig3))
+
+	t.Log("=== Sign with re-imported shares (parties 1,2) ===")
+	sig4 := runSign(t, importedKPs, importedPKP, []int{1, 2}, []byte("re-imported vault test 2"))
+	t.Logf("signature: %x (%d bytes)", sig4, len(sig4))
+
+	t.Log("=== All vault 2 operations successful ===")
+}
+
 func TestBalanceScan(t *testing.T) {
 	mnemonic, birthday, _ := loadEnv(t)
+
+	t.Log("=== Derive IVK from seed ===")
+	seed := bip39.MnemonicToSeed(mnemonic)
+
+	result := runKeyImport(t, 3, 2, seed, 0)
+
+	keys, err := frozt.SaplingDeriveKeys(result.pubKeyPackage, result.extras)
+	if err != nil {
+		t.Fatalf("SaplingDeriveKeys: %v", err)
+	}
+	t.Logf("ivk: %x (%d bytes)", keys.Ivk, len(keys.Ivk))
+
+	t.Log("=== Connect to lightwalletd ===")
+	scanner, err := lightwalletd.NewScanner("zec.rocks:443")
+	if err != nil {
+		t.Fatalf("NewScanner: %v", err)
+	}
+	defer scanner.Close()
+
+	ctx := context.Background()
+
+	info, err := scanner.GetLightdInfo(ctx)
+	if err != nil {
+		t.Fatalf("GetLightdInfo: %v", err)
+	}
+	t.Logf("lightwalletd: %s chain=%s height=%d", info.Version, info.ChainName, info.BlockHeight)
+
+	tip, err := scanner.GetLatestBlock(ctx)
+	if err != nil {
+		t.Fatalf("GetLatestBlock: %v", err)
+	}
+	t.Logf("chain tip: %d", tip)
+
+	startHeight := uint64(birthday)
+	t.Logf("=== Scanning blocks %d → %d (%d blocks) ===", startHeight, tip, tip-startHeight+1)
+
+	scanResult, err := scanner.Scan(ctx, keys.Ivk, startHeight, tip, 0, func(scanned, total uint64) {
+		t.Logf("progress: %d / %d blocks (%.1f%%)", scanned, total, float64(scanned)/float64(total)*100)
+	})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	t.Logf("=== Scan complete ===")
+	t.Logf("blocks scanned: %d", scanResult.BlocksScaned)
+	t.Logf("notes found: %d", len(scanResult.Notes))
+
+	for i, note := range scanResult.Notes {
+		zec := float64(note.Value) / 1e8
+		t.Logf("  note %d: height=%d value=%.8f ZEC (%d zatoshi) tx=%x", i, note.Height, zec, note.Value, note.TxHash)
+	}
+
+	totalZEC := float64(scanResult.TotalValue) / 1e8
+	t.Logf("total received: %.8f ZEC (%d zatoshi)", totalZEC, scanResult.TotalValue)
+}
+
+func TestBalanceScan2(t *testing.T) {
+	mnemonic, birthday, _ := loadEnv2(t)
 
 	t.Log("=== Derive IVK from seed ===")
 	seed := bip39.MnemonicToSeed(mnemonic)
@@ -548,7 +800,7 @@ func TestSpend(t *testing.T) {
 	}
 
 	if len(scanResult.Notes) == 0 {
-		t.Fatal("no notes found")
+		t.Skip("no spendable notes found — fund the z-address first")
 	}
 
 	note := scanResult.Notes[0]

@@ -175,6 +175,7 @@ mod tests {
     use super::*;
     use crate::keygen::tests::{decode_id_map, run_dkg_native};
     use frost_core::keys::PublicKeyPackage;
+    use wasm_bindgen_test::*;
 
     fn encode_id_map(entries: &[(u16, Vec<u8>)]) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -320,5 +321,15 @@ mod tests {
         let pkp_3of4 =
             PublicKeyPackage::<J>::deserialize(&results_3of4[0].1).unwrap();
         assert_eq!(vk, *pkp_3of4.verifying_key());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_reshare_2of2_to_2of3_wasm() {
+        test_reshare_2of2_to_2of3();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_reshare_chain_wasm() {
+        test_reshare_chain();
     }
 }

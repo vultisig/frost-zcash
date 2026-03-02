@@ -14,7 +14,9 @@ use sapling_crypto::{
 };
 use sapling_crypto::bundle::GrothProofBytes;
 use sapling_crypto::note::ExtractedNoteCommitment;
+use zcash_address::unified::{Address as UnifiedAddress, Container, Encoding, Receiver};
 use zcash_note_encryption::{Domain, EphemeralKeyBytes};
+use zcash_protocol::consensus::NetworkType;
 
 use zeroize::Zeroize;
 
@@ -138,6 +140,10 @@ const _: () = {
 };
 
 pub fn parse_payment_address(addr_str: &str) -> Result<PaymentAddress, lib_error> {
+    if addr_str.starts_with("u1") {
+        return parse_unified_address(addr_str);
+    }
+
     let (hrp, data) = bech32::decode(addr_str)
         .map_err(|_| lib_error::LIB_SAPLING_ERROR)?;
 
@@ -151,6 +157,24 @@ pub fn parse_payment_address(addr_str: &str) -> Result<PaymentAddress, lib_error
     let addr_bytes: [u8; 43] = data[..43].try_into().unwrap();
     PaymentAddress::from_bytes(&addr_bytes)
         .ok_or(lib_error::LIB_SAPLING_ERROR)
+}
+
+fn parse_unified_address(addr_str: &str) -> Result<PaymentAddress, lib_error> {
+    let (network, ua) = UnifiedAddress::decode(addr_str)
+        .map_err(|_| lib_error::LIB_SAPLING_ERROR)?;
+
+    if network != NetworkType::Main {
+        return Err(lib_error::LIB_SAPLING_ERROR);
+    }
+
+    for receiver in ua.items() {
+        if let Receiver::Sapling(bytes) = receiver {
+            return PaymentAddress::from_bytes(&bytes)
+                .ok_or(lib_error::LIB_SAPLING_ERROR);
+        }
+    }
+
+    Err(lib_error::LIB_SAPLING_ERROR)
 }
 
 pub fn branch_id_for_height(height: u32) -> u32 {
@@ -737,8 +761,13 @@ mod tests {
         extras: Vec<u8>,
     }
 
+    const ABANDON_ADDR: &str = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
+
     fn setup_key_material() -> TestKeyMaterial {
-        let seed = [0xABu8; 64];
+        let seed = hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap();
         let import = key_import::tests::run_key_import(3, 2, &seed, 0);
         let pkp = import.results[0].1.clone();
         let extras = import.extras;
@@ -748,7 +777,7 @@ mod tests {
 
     #[test]
     fn test_parse_payment_address_valid() {
-        let addr = "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s";
+        let addr = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
         let result = parse_payment_address(addr);
         assert!(result.is_ok());
     }
@@ -762,6 +791,29 @@ mod tests {
     #[test]
     fn test_parse_payment_address_invalid_bech32() {
         let result = parse_payment_address("zs1notvalidbech32data!!!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_unified_address_with_sapling() {
+        let zs_addr = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
+        let zs_pa = parse_payment_address(zs_addr).unwrap();
+
+        let sapling_receiver = Receiver::Sapling(zs_pa.to_bytes());
+        let ua = UnifiedAddress::try_from_items(vec![sapling_receiver]).unwrap();
+        let ua_str = ua.encode(&NetworkType::Main);
+        assert!(ua_str.starts_with("u1"));
+
+        let ua_pa = parse_payment_address(&ua_str).unwrap();
+        assert_eq!(zs_pa.to_bytes(), ua_pa.to_bytes());
+    }
+
+    #[test]
+    fn test_parse_unified_address_no_sapling_receiver() {
+        let unknown_receiver = Receiver::Unknown { typecode: 0xFF, data: vec![0u8; 32] };
+        let ua = UnifiedAddress::try_from_items(vec![unknown_receiver]).unwrap();
+        let ua_str = ua.encode(&NetworkType::Main);
+        let result = parse_payment_address(&ua_str);
         assert!(result.is_err());
     }
 
@@ -897,7 +949,7 @@ mod tests {
             lib_error::LIB_OK,
         );
 
-        let addr = "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s";
+        let addr = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
         let addr_slice = go_slice::from(addr.as_bytes());
         let result = frozt_tx_builder_add_output(builder_handle, Some(&addr_slice), 100_000);
         assert_eq!(result, lib_error::LIB_OK);

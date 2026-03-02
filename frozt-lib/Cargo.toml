@@ -29,7 +29,9 @@ group = "0.13"
 hex = "0.4"
 jubjub = "0.10"
 zip32 = "0.2"
+zcash_address = "0.6"
 zcash_note_encryption = "0.4"
+zcash_protocol = "0.4"
 zeroize = { version = "1", features = ["derive"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

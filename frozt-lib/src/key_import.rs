@@ -325,9 +325,18 @@ pub(crate) mod tests {
         KeyImportResult { results, vk, extras }
     }
 
+    fn abandon_seed() -> Vec<u8> {
+        hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap()
+    }
+
+    const ABANDON_ADDR: &str = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
+
     #[test]
     fn test_key_import_2of3() {
-        let seed = [0xABu8; 64];
+        let seed = abandon_seed();
 
         let import = run_key_import(3, 2, &seed, 0);
         assert_eq!(import.results.len(), 3);
@@ -338,7 +347,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_key_import_3of4() {
-        let seed = [0xABu8; 64];
+        let seed = abandon_seed();
 
         let import = run_key_import(4, 3, &seed, 1);
         assert_eq!(import.results.len(), 4);
@@ -348,12 +357,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_key_import_mnemonic_seed() {
-        let seed = hex::decode(
-            "c829196323d2eea891b2b6a01e0f10f31645a339e0b1ab0c1f3184d6ac58589a\
-             2fdab5c19437877ba33887541a27436eb287393dea0265a3681da5e6f5853627"
-        ).unwrap();
-        assert_eq!(seed.len(), 64);
+    fn test_key_import_and_derive_address() {
+        let seed = abandon_seed();
 
         let import = run_key_import(3, 2, &seed, 0);
         assert_eq!(import.results.len(), 3);
@@ -379,13 +384,12 @@ pub(crate) mod tests {
             lib_error::LIB_OK,
         );
         let z_addr = String::from_utf8(addr_buf.into_vec()).unwrap();
-        let expected_z_addr = "zs1s82p0h0689ccjdfe39tvlzj6hyp2ukqrukfdvdd8cgqfgnexc958uzt0nshx2vk2l9xmxzun7vq";
-        assert_eq!(z_addr, expected_z_addr, "z-address should match wallet");
+        assert_eq!(z_addr, ABANDON_ADDR);
     }
 
     #[test]
     fn test_key_import_rejects_out_of_range_account_index() {
-        let seed = [0xABu8; 64];
+        let seed = abandon_seed();
         let seed_slice = go_slice::from(seed.as_slice());
         let mut secret = Handle::null();
         let mut package = tss_buffer::empty();

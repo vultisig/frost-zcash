@@ -305,9 +305,19 @@ pub fn frozt_sapling_compute_nullifier(
 mod tests {
     use super::*;
     use crate::key_import;
+    use wasm_bindgen_test::*;
+
+    fn abandon_seed() -> Vec<u8> {
+        hex::decode(
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
+             9a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+        ).unwrap()
+    }
+
+    const ABANDON_ADDR: &str = "zs188wzupg00tqs3y5reyjc758c6vhl8qm2kg4k43mcp533ytrdkwpy8xjdk3zqtek0ng0cv7f0nta";
 
     fn seed_and_extras() -> (Vec<u8>, Vec<u8>) {
-        let seed = [0xABu8; 64];
+        let seed = abandon_seed();
         let import = key_import::tests::run_key_import_native(3, 2, &seed, 0);
         let pkp = import.results[0].1.clone();
         (pkp, import.extras)
@@ -327,10 +337,7 @@ mod tests {
     fn test_derive_keys() {
         let (pkp, extras) = seed_and_extras();
         let keys = frozt_sapling_derive_keys(&pkp, &extras).unwrap();
-        assert_eq!(
-            keys.address(),
-            "zs1r53tpdj9zzr35du6lp82c3e75gfp9wvdmgg77a50s4clcncvck2al4hs66yfpterjzzwgctej6s"
-        );
+        assert_eq!(keys.address(), ABANDON_ADDR);
         assert_eq!(keys.ivk().len(), 32);
         assert_eq!(keys.nk().len(), 32);
 
@@ -340,4 +347,13 @@ mod tests {
         assert_eq!(keys.nk(), expected_nk.to_bytes());
     }
 
+    #[wasm_bindgen_test]
+    fn test_generate_extras_wasm() {
+        test_generate_extras();
+    }
+
+    #[wasm_bindgen_test]
+    fn test_derive_keys_wasm() {
+        test_derive_keys();
+    }
 }
