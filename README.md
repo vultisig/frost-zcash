@@ -96,6 +96,34 @@ cd poc-frozt
 ./scripts/run-sign.sh my-session "hello zcash" "party-1,party-2"
 ```
 
+## Upstream Sources
+
+FROZT does not hand-roll cryptography. All cryptographic primitives come from peer-reviewed, published libraries maintained by the Zcash ecosystem:
+
+| Component | Source | What it provides |
+|-----------|--------|------------------|
+| **FROST DKG & signing** | [`frost-core`](https://crates.io/crates/frost-core) v2.2 | Standard FROST distributed key generation and threshold signing |
+| **Rerandomized signing** | [`frost-rerandomized`](https://crates.io/crates/frost-rerandomized) v2.2 | Rerandomization layer for Zcash Sapling unlinkability |
+| **RedJubjub ciphersuite** | [`reddsa`](https://github.com/ZcashFoundation/reddsa) (ZcashFoundation) | `JubjubBlake2b512` curve + FROST ciphersuite definition |
+| **Sapling key derivation** | [`sapling-crypto`](https://crates.io/crates/sapling-crypto) v0.6 | ZIP 32 extended spending keys, note encryption, Groth16 spend/output provers |
+| **Address encoding** | [`zcash_address`](https://crates.io/crates/zcash_address) v0.6 | Bech32 Sapling z-address encoding |
+| **JubJub field ops** | [`jubjub`](https://crates.io/crates/jubjub) v0.10 | Scalar field and group operations |
+| **ZIP 32 paths** | [`zip32`](https://crates.io/crates/zip32) v0.2 | Hardened path derivation (`m/32'/133'/account'`) |
+
+DKG delegates directly to `frost_core::keys::dkg::part1/2/3`. Signing delegates to `frost_rerandomized::sign` and `frost_rerandomized::aggregate`. Sapling key derivation delegates to `sapling_crypto::zip32::ExtendedSpendingKey`. Z-address generation delegates to `sapling_crypto::keys::DiversifiableFullViewingKey`. Groth16 proofs delegate to `sapling_crypto::prover::{SpendProver, OutputProver}`.
+
+### What we do write ourselves (and why it's safe)
+
+Three protocol extensions compose the upstream primitives without introducing new cryptographic assumptions:
+
+**Resharing** (`reshare.rs`) — Allows changing the threshold scheme (e.g., 2-of-2 → 2-of-3) while preserving the group public key. The only custom math is computing Lagrange interpolation coefficients over the JubJub scalar field — textbook polynomial evaluation using upstream field arithmetic (`Fr::one()`, multiply, invert). The result feeds into standard `frost-core` DKG rounds 2 and 3. Output is verified against the expected group verifying key.
+
+**Key Import** (`key_import.rs`) — Imports an existing Zcash Sapling spending key into the threshold scheme. The importing party sets their DKG polynomial constant to `ask - (N-1)` while all other parties use `1`, so the shares sum to the original spending key. This is a single field subtraction on top of standard ZIP 32 derivation (upstream `ExtendedSpendingKey::from_path`) and standard FROST DKG. The resulting group public key is verified against the expected verifying key derived from the spending key.
+
+**Sapling extras & z-address composition** (`sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed-based imports, these are extracted directly from the upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` is generated via `jubjub::Fr::random()` and the rest via `OsRng`. The z-address itself is produced by upstream `DiversifiableFullViewingKey::default_address()`. The initiating party shares these extras (including view key material) with all other parties so each can derive the z-address; this is safe because all Vultisig vault parties are devices controlled by the same user — no untrusted party gains transaction visibility.
+
+Everything else (FFI handle table, binary codec, Go/WASM bindings) is non-cryptographic plumbing.
+
 ## Protocol Details
 
 ### Curve & Ciphersuite
@@ -129,6 +157,8 @@ Import an existing Zcash Sapling spending key (derived from a BIP39 mnemonic via
 4. **Round 3**: `frozt_key_import_part3` runs standard DKG part 3, then verifies the resulting group verifying key matches the expected key derived from the spending key.
 
 Sapling extras (`nsk`, `ovk`, `dk`) needed for z-address derivation are extracted from the seed via `frozt_derive_sapling_extras_from_seed`. For seedless DKG, use `frozt_sapling_generate_extras` to produce random extras. In both cases, `frozt_sapling_derive_address` combines the group public key with the extras to produce a valid Sapling z-address.
+
+**Note on view key sharing:** During key import, the initiating party derives the Sapling extras (which include view key material) from the seed and shares them with all other parties so that every party can independently derive the z-address. In a standard Zcash setup, sharing view keys would grant transaction visibility to those parties. In Vultisig's model this is acceptable because all parties in a vault are controlled by the same user across their own devices — there is no untrusted counter-party who would gain unwanted visibility into the user's transaction history.
 
 ### Signing
 
