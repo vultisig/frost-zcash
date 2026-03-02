@@ -7,7 +7,7 @@ use sapling_crypto::zip32::ExtendedSpendingKey;
 use wasm_bindgen::prelude::*;
 use zip32::ChildIndex;
 
-use crate::{js_obj, keygen, set_bytes, to_js_err, Identifier, J};
+use crate::{js_obj, keygen, set_bytes, to_js_err, zeroize_scalar_vec, Identifier, J};
 
 type F = <<J as Ciphersuite>::Group as Group>::Field;
 type G = <J as Ciphersuite>::Group;
@@ -31,7 +31,10 @@ fn derive_spending_key(seed: &[u8], account_index: u32) -> Result<[u8; 32], JsEr
         account,
     ];
     let child = ExtendedSpendingKey::from_path(&master, &path);
-    Ok(child.expsk.ask.to_bytes())
+    let mut ask_bytes = child.expsk.ask.to_bytes();
+    let result = ask_bytes;
+    zeroize::Zeroize::zeroize(&mut ask_bytes);
+    Ok(result)
 }
 
 fn spending_key_to_vk(spending_key: &[u8; 32]) -> Result<Vec<u8>, JsError> {
@@ -126,11 +129,13 @@ pub fn frozt_key_import_part1(
 
     let secret = dkg::round1::SecretPackage::new(
         id,
-        coefficients,
+        coefficients.clone(),
         commitment.clone(),
         min_signers,
         max_signers,
     );
+
+    zeroize_scalar_vec(&mut coefficients);
 
     let package = dkg::round1::Package::new(commitment, proof);
 

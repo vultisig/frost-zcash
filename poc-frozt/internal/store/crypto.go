@@ -4,28 +4,31 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
-	"io"
 
-	"golang.org/x/crypto/hkdf"
+	"golang.org/x/crypto/argon2"
 )
 
-func deriveKey(passphrase string) ([]byte, error) {
-	hkdfReader := hkdf.New(sha256.New, []byte(passphrase), nil, []byte("frozt-keystore-encryption"))
-	key := make([]byte, 32)
-	_, err := io.ReadFull(hkdfReader, key)
-	if err != nil {
-		return nil, fmt.Errorf("derive key: %w", err)
-	}
-	return key, nil
+const (
+	argon2Time    = 3
+	argon2Memory  = 64 * 1024
+	argon2Threads = 4
+	argon2KeyLen  = 32
+	argon2SaltLen = 16
+)
+
+func deriveKey(passphrase string, salt []byte) []byte {
+	return argon2.IDKey([]byte(passphrase), salt, argon2Time, argon2Memory, argon2Threads, argon2KeyLen)
 }
 
 func encryptData(plaintext []byte, passphrase string) ([]byte, error) {
-	key, err := deriveKey(passphrase)
+	salt := make([]byte, argon2SaltLen)
+	_, err := rand.Read(salt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate salt: %w", err)
 	}
+
+	key := deriveKey(passphrase, salt)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -43,14 +46,22 @@ func encryptData(plaintext []byte, passphrase string) ([]byte, error) {
 		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
-	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	result := make([]byte, 0, argon2SaltLen+len(ciphertext))
+	result = append(result, salt...)
+	result = append(result, ciphertext...)
+	return result, nil
 }
 
 func decryptData(ciphertext []byte, passphrase string) ([]byte, error) {
-	key, err := deriveKey(passphrase)
-	if err != nil {
-		return nil, err
+	if len(ciphertext) < argon2SaltLen {
+		return nil, fmt.Errorf("ciphertext too short for salt")
 	}
+
+	salt := ciphertext[:argon2SaltLen]
+	rest := ciphertext[argon2SaltLen:]
+
+	key := deriveKey(passphrase, salt)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -63,12 +74,12 @@ func decryptData(ciphertext []byte, passphrase string) ([]byte, error) {
 	}
 
 	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
+	if len(rest) < nonceSize {
 		return nil, fmt.Errorf("ciphertext too short")
 	}
 
-	nonce := ciphertext[:nonceSize]
-	data := ciphertext[nonceSize:]
+	nonce := rest[:nonceSize]
+	data := rest[nonceSize:]
 
 	plaintext, err := gcm.Open(nil, nonce, data, nil)
 	if err != nil {

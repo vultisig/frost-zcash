@@ -5,12 +5,12 @@ type Scalar = frost_core::Scalar<JubjubBlake2b512>;
 /// Zeroes the in-memory representation of a jubjub scalar.
 /// jubjub::Fr doesn't implement Zeroize, so we use volatile writes directly.
 pub fn zeroize_scalar(s: &mut Scalar) {
-    // SAFETY: We overwrite the scalar's memory with zeros via volatile writes
-    // to prevent the compiler from optimizing away the zeroing.
     unsafe {
         let ptr = s as *mut Scalar as *mut u8;
         let len = std::mem::size_of::<Scalar>();
-        std::ptr::write_bytes(ptr, 0, len);
+        for i in 0..len {
+            std::ptr::write_volatile(ptr.add(i), 0u8);
+        }
     }
 }
 

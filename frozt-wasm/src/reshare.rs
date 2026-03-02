@@ -5,7 +5,7 @@ use frost_core::{
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    js_obj, keygen, set_bytes, to_js_err, Identifier, J,
+    js_obj, keygen, set_bytes, to_js_err, zeroize_scalar_vec, Identifier, J,
 };
 
 type Scalar = frost_core::Scalar<J>;
@@ -65,6 +65,9 @@ fn reshare_part1_inner(
             let li = lagrange_coeff(kp.identifier(), &old_ids)?;
             let mut share = di * li;
 
+            if old_ids.len() as u16 > max_signers {
+                return Err(JsError::new("old_ids count exceeds max_signers"));
+            }
             let num_new = max_signers - old_ids.len() as u16;
             let min_old_id = old_ids
                 .iter()
@@ -102,11 +105,13 @@ fn reshare_part1_inner(
 
     let secret = dkg::round1::SecretPackage::new(
         id,
-        coefficients,
+        coefficients.clone(),
         commitment.clone(),
         min_signers,
         max_signers,
     );
+
+    zeroize_scalar_vec(&mut coefficients);
 
     let package = dkg::round1::Package::new(commitment, proof);
 

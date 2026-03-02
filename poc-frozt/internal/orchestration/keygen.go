@@ -2,7 +2,9 @@ package orchestration
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -116,8 +118,10 @@ func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 func exchangeSaplingExtras(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, allParties []string) ([]byte, error) {
 	isCoordinator := IsCoordinatorParty(partyID, allParties)
 
+	var extras []byte
 	if isCoordinator {
-		extras, err := frozt.SaplingGenerateExtras()
+		var err error
+		extras, err = frozt.SaplingGenerateExtras()
 		if err != nil {
 			return nil, fmt.Errorf("generate sapling extras: %w", err)
 		}
@@ -141,21 +145,71 @@ func exchangeSaplingExtras(ctx context.Context, client *relay.RelayClient, sessi
 		if err != nil {
 			return nil, fmt.Errorf("send sapling extras: %w", err)
 		}
+	} else {
+		messages, err := collectMessages(ctx, client, sessionID, partyID, "sapling-extras", 1)
+		if err != nil {
+			return nil, fmt.Errorf("collect sapling extras: %w", err)
+		}
 
-		return extras, nil
+		extras, err = base64.StdEncoding.DecodeString(messages[0].Data)
+		if err != nil {
+			return nil, fmt.Errorf("decode sapling extras: %w", err)
+		}
 	}
 
-	messages, err := collectMessages(ctx, client, sessionID, partyID, "sapling-extras", 1)
-	if err != nil {
-		return nil, fmt.Errorf("collect sapling extras: %w", err)
+	if len(extras) != 96 {
+		return nil, fmt.Errorf("invalid sapling extras length: got %d, want 96", len(extras))
 	}
 
-	extras, err := base64.StdEncoding.DecodeString(messages[0].Data)
+	err := verifySaplingExtrasConsistency(ctx, client, sessionID, partyID, identifier, extras, allParties)
 	if err != nil {
-		return nil, fmt.Errorf("decode sapling extras: %w", err)
+		return nil, fmt.Errorf("sapling extras consistency: %w", err)
 	}
 
 	return extras, nil
+}
+
+func verifySaplingExtrasConsistency(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, extras []byte, allParties []string) error {
+	hash := sha256.Sum256(extras)
+	myHash := hex.EncodeToString(hash[:])
+
+	msg := RoundMessage{
+		SenderID: identifier,
+		Data:     myHash,
+	}
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal hash: %w", err)
+	}
+
+	recipients := OtherParties(allParties, partyID)
+	err = client.SendMessage(ctx, sessionID, "sapling-extras-hash", relay.Message{
+		SessionID: sessionID,
+		From:      partyID,
+		To:        recipients,
+		Body:      string(msgBytes),
+	})
+	if err != nil {
+		return fmt.Errorf("send hash: %w", err)
+	}
+
+	_, err = client.WaitForBarrier(ctx, sessionID, "sapling-extras-hash", partyID, 1, len(allParties))
+	if err != nil {
+		return fmt.Errorf("barrier: %w", err)
+	}
+
+	messages, err := collectMessages(ctx, client, sessionID, partyID, "sapling-extras-hash", len(allParties)-1)
+	if err != nil {
+		return fmt.Errorf("collect hashes: %w", err)
+	}
+
+	for _, m := range messages {
+		if m.Data != myHash {
+			return fmt.Errorf("party %d has different sapling extras hash", m.SenderID)
+		}
+	}
+
+	return nil
 }
 
 func collectMessages(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string, expected int) ([]RoundMessage, error) {

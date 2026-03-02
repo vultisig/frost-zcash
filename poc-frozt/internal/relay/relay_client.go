@@ -132,8 +132,15 @@ func (c *RelayClient) GetSessionParties(ctx context.Context, sessionID string) (
 func (c *RelayClient) SendMessage(ctx context.Context, sessionID, messageID string, msg Message) error {
 	msg.SequenceNo = c.seqCounter.Add(1)
 
-	hash := sha256.Sum256([]byte(msg.Body))
-	msg.Hash = hex.EncodeToString(hash[:])
+	if c.EncryptionKeyHex != "" {
+		keyBytes, _ := hex.DecodeString(c.EncryptionKeyHex)
+		mac := hmac.New(sha256.New, keyBytes)
+		mac.Write([]byte(msg.Body))
+		msg.Hash = hex.EncodeToString(mac.Sum(nil))
+	} else {
+		hash := sha256.Sum256([]byte(msg.Body))
+		msg.Hash = hex.EncodeToString(hash[:])
+	}
 
 	if c.EncryptionKeyHex != "" {
 		encrypted, encErr := Encrypt(msg.Body, c.EncryptionKeyHex)
@@ -312,8 +319,16 @@ func (c *RelayClient) DecryptAndVerify(msg Message) (string, error) {
 	}
 
 	if msg.Hash != "" {
-		hash := sha256.Sum256([]byte(plaintext))
-		expected := hex.EncodeToString(hash[:])
+		var expected string
+		if c.EncryptionKeyHex != "" {
+			keyBytes, _ := hex.DecodeString(c.EncryptionKeyHex)
+			mac := hmac.New(sha256.New, keyBytes)
+			mac.Write([]byte(plaintext))
+			expected = hex.EncodeToString(mac.Sum(nil))
+		} else {
+			hash := sha256.Sum256([]byte(plaintext))
+			expected = hex.EncodeToString(hash[:])
+		}
 		if expected != msg.Hash {
 			return "", fmt.Errorf("message hash mismatch: relay may have tampered with body")
 		}

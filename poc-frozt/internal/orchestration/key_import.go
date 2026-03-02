@@ -109,6 +109,15 @@ func RunKeyImport(ctx context.Context, client *relay.RelayClient, sessionID, par
 		return nil, fmt.Errorf("exchange sapling extras: %w", err)
 	}
 
+	if len(saplingExtras) != 96 {
+		return nil, fmt.Errorf("invalid sapling extras length: got %d, want 96", len(saplingExtras))
+	}
+
+	err = verifySaplingExtrasConsistency(ctx, client, sessionID, partyID, identifier, saplingExtras, allParties)
+	if err != nil {
+		return nil, fmt.Errorf("sapling extras consistency: %w", err)
+	}
+
 	return &KeygenResult{
 		KeyPackage:    keyPackage,
 		PubKeyPackage: pubKeyPackage,

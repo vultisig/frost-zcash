@@ -6,16 +6,11 @@ import (
 )
 
 func TestDeriveKey_Deterministic(t *testing.T) {
-	k1, err := deriveKey("test-passphrase")
-	if err != nil {
-		t.Fatalf("deriveKey: %v", err)
-	}
-	k2, err := deriveKey("test-passphrase")
-	if err != nil {
-		t.Fatalf("deriveKey: %v", err)
-	}
+	salt := []byte("fixed-test-salt!")
+	k1 := deriveKey("test-passphrase", salt)
+	k2 := deriveKey("test-passphrase", salt)
 	if !bytes.Equal(k1, k2) {
-		t.Fatal("same passphrase should produce same key")
+		t.Fatal("same passphrase+salt should produce same key")
 	}
 	if len(k1) != 32 {
 		t.Fatalf("key length = %d, want 32", len(k1))
@@ -23,16 +18,19 @@ func TestDeriveKey_Deterministic(t *testing.T) {
 }
 
 func TestDeriveKey_DifferentPassphrases(t *testing.T) {
-	k1, err := deriveKey("passphrase-a")
-	if err != nil {
-		t.Fatalf("deriveKey a: %v", err)
-	}
-	k2, err := deriveKey("passphrase-b")
-	if err != nil {
-		t.Fatalf("deriveKey b: %v", err)
-	}
+	salt := []byte("fixed-test-salt!")
+	k1 := deriveKey("passphrase-a", salt)
+	k2 := deriveKey("passphrase-b", salt)
 	if bytes.Equal(k1, k2) {
 		t.Fatal("different passphrases should produce different keys")
+	}
+}
+
+func TestDeriveKey_DifferentSalts(t *testing.T) {
+	k1 := deriveKey("same-pass", []byte("salt-aaaaaaaaaaaA"))
+	k2 := deriveKey("same-pass", []byte("salt-bbbbbbbbbbB"))
+	if bytes.Equal(k1, k2) {
+		t.Fatal("different salts should produce different keys")
 	}
 }
 
@@ -70,7 +68,7 @@ func TestEncryptProducesUniqueCiphertexts(t *testing.T) {
 		t.Fatalf("encrypt 2: %v", err)
 	}
 	if bytes.Equal(ct1, ct2) {
-		t.Fatal("same plaintext should produce different ciphertexts (random nonce)")
+		t.Fatal("same plaintext should produce different ciphertexts (random salt+nonce)")
 	}
 }
 
@@ -88,7 +86,7 @@ func TestDecryptWrongPassphrase(t *testing.T) {
 func TestDecryptTooShort(t *testing.T) {
 	_, err := decryptData([]byte{1, 2, 3}, "any-pass")
 	if err == nil {
-		t.Fatal("expected error for ciphertext shorter than nonce")
+		t.Fatal("expected error for ciphertext shorter than salt")
 	}
 }
 

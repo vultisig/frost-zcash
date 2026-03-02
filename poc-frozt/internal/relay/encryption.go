@@ -13,17 +13,33 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
+const relaySaltLen = 16
+
+func deriveRelayKey(keyBytes, salt []byte) ([]byte, error) {
+	hkdfReader := hkdf.New(sha256.New, keyBytes, salt, []byte("frozt-relay-encryption"))
+	derivedKey := make([]byte, 32)
+	_, err := io.ReadFull(hkdfReader, derivedKey)
+	if err != nil {
+		return nil, fmt.Errorf("derive key: %w", err)
+	}
+	return derivedKey, nil
+}
+
 func Encrypt(plaintext string, hexKey string) (string, error) {
 	keyBytes, err := hex.DecodeString(hexKey)
 	if err != nil {
 		return "", fmt.Errorf("decode encryption key: %w", err)
 	}
 
-	hkdfReader := hkdf.New(sha256.New, keyBytes, nil, []byte("frozt-relay-encryption"))
-	derivedKey := make([]byte, 32)
-	_, err = io.ReadFull(hkdfReader, derivedKey)
+	salt := make([]byte, relaySaltLen)
+	_, err = rand.Read(salt)
 	if err != nil {
-		return "", fmt.Errorf("derive key: %w", err)
+		return "", fmt.Errorf("generate salt: %w", err)
+	}
+
+	derivedKey, err := deriveRelayKey(keyBytes, salt)
+	if err != nil {
+		return "", err
 	}
 
 	block, err := aes.NewCipher(derivedKey)
@@ -43,7 +59,10 @@ func Encrypt(plaintext string, hexKey string) (string, error) {
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	result := make([]byte, 0, relaySaltLen+len(ciphertext))
+	result = append(result, salt...)
+	result = append(result, ciphertext...)
+	return base64.StdEncoding.EncodeToString(result), nil
 }
 
 func Decrypt(ciphertextB64 string, hexKey string) (string, error) {
@@ -52,16 +71,21 @@ func Decrypt(ciphertextB64 string, hexKey string) (string, error) {
 		return "", fmt.Errorf("decode base64: %w", err)
 	}
 
+	if len(data) < relaySaltLen {
+		return "", fmt.Errorf("ciphertext too short for salt")
+	}
+
+	salt := data[:relaySaltLen]
+	rest := data[relaySaltLen:]
+
 	keyBytes, err := hex.DecodeString(hexKey)
 	if err != nil {
 		return "", fmt.Errorf("decode encryption key: %w", err)
 	}
 
-	hkdfReader := hkdf.New(sha256.New, keyBytes, nil, []byte("frozt-relay-encryption"))
-	derivedKey := make([]byte, 32)
-	_, err = io.ReadFull(hkdfReader, derivedKey)
+	derivedKey, err := deriveRelayKey(keyBytes, salt)
 	if err != nil {
-		return "", fmt.Errorf("derive key: %w", err)
+		return "", err
 	}
 
 	block, err := aes.NewCipher(derivedKey)
@@ -75,12 +99,12 @@ func Decrypt(ciphertextB64 string, hexKey string) (string, error) {
 	}
 
 	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
+	if len(rest) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
 
-	nonce := data[:nonceSize]
-	ciphertext := data[nonceSize:]
+	nonce := rest[:nonceSize]
+	ciphertext := rest[nonceSize:]
 
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
