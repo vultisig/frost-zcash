@@ -34,8 +34,8 @@ fn lagrange_coeff(my_id: &Identifier, all_ids: &[Identifier]) -> Result<Scalar, 
             continue;
         }
         let xj = id.to_scalar();
-        num = num * xj;
-        den = den * (xj - xi);
+        num *= xj;
+        den *= xj - xi;
     }
     let den_inv = F::invert(&den).map_err(|_| lib_error::LIB_RESHARE_ERROR)?;
     Ok(num * den_inv)
@@ -97,7 +97,7 @@ pub extern "C" fn frozt_reshare_part1(
                     .ok_or(lib_error::LIB_RESHARE_ERROR)?;
                 if kp.identifier() == min_old_id {
                     for _ in 0..num_new {
-                        share = share - F::one();
+                        share -= F::one();
                     }
                 }
 

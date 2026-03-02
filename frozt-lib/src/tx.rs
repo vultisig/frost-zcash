@@ -370,7 +370,7 @@ fn hash_sapling(
         for spend in spends {
             h.update(&spend.cv.to_bytes());
             h.update(&spend.anchor.to_repr());
-            let rk_bytes: [u8; 32] = spend.rk.clone().into();
+            let rk_bytes: [u8; 32] = spend.rk.into();
             h.update(&rk_bytes);
         }
         h.finalize()
@@ -687,7 +687,7 @@ pub fn serialize_v5_tx(
     for spend in spends {
         tx.write_all(&spend.cv.to_bytes()).map_err(w)?;
         tx.write_all(&spend.nullifier.0).map_err(w)?;
-        let rk_bytes: [u8; 32] = spend.rk.clone().into();
+        let rk_bytes: [u8; 32] = spend.rk.into();
         tx.write_all(&rk_bytes).map_err(w)?;
     }
 

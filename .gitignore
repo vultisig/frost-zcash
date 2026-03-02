@@ -8,6 +8,9 @@ go-frozt/includes/darwin/
 go-frozt/includes/linux/
 go-frozt/includes/linux-amd64/
 go-frozt/includes/linux-arm64/
+go-frozt/includes/*.dylib
+go-frozt/includes/*.so
+poc-frozt/frozt-party
 frozt-wasm/pkg/frozt_wasm_bg.wasm
 frozt-wasm/pkg/frozt_wasm_bg.wasm.d.ts
 frozt-wasm/pkg/frozt_wasm.js

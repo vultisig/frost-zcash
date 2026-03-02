@@ -70,7 +70,7 @@ pub fn wasm_encode_map(entries: JsValue) -> Result<Vec<u8>, JsError> {
     let arr = js_sys::Array::from(&entries);
     let len = arr.length();
     let mut buf = Vec::new();
-    buf.extend_from_slice(&(len as u32).to_le_bytes());
+    buf.extend_from_slice(&len.to_le_bytes());
     for i in 0..len {
         let entry = arr.get(i);
         let id_val = js_sys::Reflect::get(&entry, &"id".into())

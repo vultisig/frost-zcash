@@ -94,7 +94,7 @@ pub fn frozt_key_import_part1(
             let num_others = (max_signers - 1) as u64;
             let mut result = sk_scalar;
             for _ in 0..num_others {
-                result = result - F::one();
+                result -= F::one();
             }
             result
         }
@@ -283,7 +283,7 @@ pub(crate) mod tests {
                 let num_others = (n - 1) as u64;
                 let mut result = sk_scalar;
                 for _ in 0..num_others {
-                    result = result - F::one();
+                    result -= F::one();
                 }
                 result
             } else {

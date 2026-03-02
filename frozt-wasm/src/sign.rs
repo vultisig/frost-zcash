@@ -14,7 +14,7 @@ use crate::{codec, js_obj, set_bytes, to_js_err, J};
 
 thread_local! {
     static NONCE_STORE: RefCell<HashMap<u32, SigningNonces<J>>> = RefCell::new(HashMap::new());
-    static NONCE_NEXT_ID: Cell<u32> = Cell::new(1);
+    static NONCE_NEXT_ID: Cell<u32> = const { Cell::new(1) };
 }
 
 fn store_nonces(nonces: SigningNonces<J>) -> u32 {

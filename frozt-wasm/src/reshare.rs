@@ -24,8 +24,8 @@ fn lagrange_coeff(
             continue;
         }
         let xj = id.to_scalar();
-        num = num * xj;
-        den = den * (xj - xi);
+        num *= xj;
+        den *= xj - xi;
     }
     let den_inv = F::invert(&den).map_err(to_js_err)?;
     Ok(num * den_inv)
@@ -72,7 +72,7 @@ fn reshare_part1_inner(
                 .ok_or_else(|| JsError::new("empty old_ids"))?;
             if kp.identifier() == min_old_id {
                 for _ in 0..num_new {
-                    share = share - F::one();
+                    share -= F::one();
                 }
             }
 
